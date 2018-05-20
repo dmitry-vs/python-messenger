@@ -6,9 +6,11 @@ from jim import JimMessage, jim_msg_from_bytes
 
 
 def parse_commandline_args(args):
-    temp_args = args[1:]
-    ip = temp_args[0]
-    port = int(temp_args[1]) if len(temp_args) > 1 else helpers.DEFAULT_SERVER_PORT
+    if len(args) not in [1, 2]:
+        raise IndexError('Incorrect number of arguments')
+
+    ip = args[0]
+    port = int(args[1]) if len(args) > 1 else helpers.DEFAULT_SERVER_PORT
     return ip, port
 
 
@@ -19,7 +21,7 @@ def print_usage():
 if __name__ == '__main__':
     server_ip, server_port = None, None
     try:
-        server_ip, server_port = parse_commandline_args(sys.argv)
+        server_ip, server_port = parse_commandline_args(sys.argv[1:])
     except:
         print_usage()
         exit(1)

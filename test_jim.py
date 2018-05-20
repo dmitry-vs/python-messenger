@@ -61,7 +61,7 @@ class TestJimMessageClass:
             self.test.from_bytes(baddata)
 
 
-# tests for method jim_msg_from_bytes
+# tests for: jim_msg_from_bytes
 def test_incorrect_input__raises():
     baddata = b'\xde\xad\xbe\xef'
     with pytest.raises(UnicodeDecodeError):
