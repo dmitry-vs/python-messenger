@@ -2,6 +2,7 @@ import argparse
 import socket as sck
 
 import helpers
+from jim import JimMessage, jim_msg_from_bytes
 
 CLIENTS_COUNT_LIMIT = 5
 
@@ -13,11 +14,6 @@ def parse_commandline_args():
     return parser.parse_args()
 
 
-# receive client message, parse message, send answer
-
-# add tests (pytest)
-
-
 if __name__ == '__main__':
     args = parse_commandline_args()
     server_socket = sck.socket(sck.AF_INET, sck.SOCK_STREAM)
@@ -27,8 +23,12 @@ if __name__ == '__main__':
 
     while True:
         client, addr = server_socket.accept()
-        print(f'received connection from {client}, {addr}')
-        message = client.recv(helpers.TCP_MSG_BUFFER_SIZE)
+        print(f'connection from client {addr}')
+        message_bytes = client.recv(helpers.TCP_MSG_BUFFER_SIZE)
+        message = jim_msg_from_bytes(message_bytes)
         print(f'message from client: {message}')
-        client.send(b'test_from_server')
+        response = JimMessage()
+        response.set_field('response', 200)
+        client.send(response.to_bytes())
         client.close()
+

@@ -1,7 +1,9 @@
 import sys
 import socket as sck
+import time
 
 import helpers
+from jim import JimMessage, jim_msg_from_bytes
 
 
 def parse_commandline_args(args):
@@ -15,16 +17,6 @@ def print_usage():
     print(f'usage: client.py <server_ip> [server_port]')
 
 
-# create JIM presense-message
-
-# send message to server, get response
-
-# parse response
-
-
-# add tests (pytest)
-
-
 if __name__ == '__main__':
     server_ip, server_port = None, None
     try:
@@ -35,7 +27,12 @@ if __name__ == '__main__':
 
     client_socket = sck.socket(sck.AF_INET, sck.SOCK_STREAM)
     client_socket.connect((server_ip, server_port))
-    client_socket.send(b'test_from_client')
+    message = JimMessage()
+    message.set_field('action', 'presence')
+    message.set_field('time', str(time.time()))
+    print('sending presence message to server')
+    client_socket.send(message.to_bytes())
     response = client_socket.recv(helpers.TCP_MSG_BUFFER_SIZE)
-    print(f'message from server: {response}')
+    server_message = jim_msg_from_bytes(response)
+    print(f'response from server: {server_message}')
     client_socket.close()
