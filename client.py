@@ -1,6 +1,5 @@
 import sys
 import socket as sck
-import time
 
 import helpers
 from jim import JimMessage, jim_msg_from_bytes
@@ -29,7 +28,7 @@ if __name__ == '__main__':
     client_socket.connect((server_ip, server_port))
     message = JimMessage()
     message.set_field('action', 'presence')
-    message.set_field('time', str(time.time()))
+    message.set_time()
     print('sending presence message to server')
     client_socket.send(message.to_bytes())
     response = client_socket.recv(helpers.TCP_MSG_BUFFER_SIZE)

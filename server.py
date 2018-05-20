@@ -29,6 +29,6 @@ if __name__ == '__main__':
         print(f'message from client: {message}')
         response = JimMessage()
         response.set_field('response', 200)
+        response.set_time()
         client.send(response.to_bytes())
         client.close()
-

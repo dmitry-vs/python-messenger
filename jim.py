@@ -1,4 +1,5 @@
 import json
+import time
 
 
 class JimMessage:
@@ -7,6 +8,13 @@ class JimMessage:
 
     def set_field(self, key, val):
         self.__datadict[key] = val
+
+    def set_time(self):
+        self.set_field('time', str(time.time()))
+
+    @property
+    def datadict(self):
+        return self.__datadict
 
     def to_bytes(self):
         self_json = json.dumps(self.__datadict)
@@ -18,6 +26,9 @@ class JimMessage:
 
     def __str__(self):
         return json.dumps(self.__datadict, indent=1)
+
+    def __eq__(self, other):
+        return self.__datadict == other.datadict
 
 
 def jim_msg_from_bytes(bytedata):
