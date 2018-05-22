@@ -14,31 +14,6 @@ def parse_commandline_args(cmd_args):
     return parser.parse_args(cmd_args)
 
 
-def read_requests(source_clients, all_clients):
-    requests = {}
-    for client_socket in source_clients:
-        try:
-            data = client_socket.recv(helpers.TCP_MSG_BUFFER_SIZE)
-            requests[client_socket] = data
-        except:
-            print(f'Client disconnected: {client_socket.getpeername()}')
-            client_socket.close()
-            all_clients.remove(client_socket)
-    return requests
-
-
-def translate_requests(requests, target_clients, all_clients):
-    for author_socket in requests:
-        response = requests[author_socket]
-        for client_socket in target_clients:
-            try:
-                client_socket.send(response)
-            except:
-                print(f'Client disconnected: {client_socket.getpeername()}')
-                client_socket.close()
-                all_clients.remove(client_socket)
-
-
 def mainloop(cmd_args: argparse.Namespace):
     server_socket = socket(AF_INET, SOCK_STREAM)
     server_socket.bind((cmd_args.listen_address, cmd_args.listen_port))
@@ -61,8 +36,25 @@ def mainloop(cmd_args: argparse.Namespace):
             except:
                 pass  # if some client unexpectedly disconnected, do nothing
 
-            requests = read_requests(source_clients=readable, all_clients=clients)
-            translate_requests(requests, target_clients=writable, all_clients=clients)
+            # read requests from all readable clients and save to dictionary
+            requests = {}
+            for client_socket in readable:
+                try:
+                    requests[client_socket] = client_socket.recv(helpers.TCP_MSG_BUFFER_SIZE)
+                except:
+                    print(f'Client disconnected: {client_socket.getpeername()}')
+                    client_socket.close()
+                    clients.remove(client_socket)
+
+            # translate requests to all writable clients
+            for req in requests.values():
+                for client_socket in writable:
+                    try:
+                        client_socket.send(req)
+                    except:
+                        print(f'Client disconnected: {client_socket.getpeername()}')
+                        client_socket.close()
+                        clients.remove(client_socket)
 
 
 if __name__ == '__main__':
