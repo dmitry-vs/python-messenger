@@ -1,33 +1,23 @@
 import sys
 import socket as sck
+import argparse
 
 import helpers
 from jim import JimMessage, jim_msg_from_bytes
 
 
-def parse_commandline_args(args):
-    if len(args) not in [1, 2]:
-        raise IndexError('Incorrect number of arguments')
-
-    ip = args[0]
-    port = int(args[1]) if len(args) > 1 else helpers.DEFAULT_SERVER_PORT
-    return ip, port
-
-
-def print_usage():
-    print(f'usage: client.py <server_ip> [server_port]')
+def parse_commandline_args(cmd_args):
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-s', dest='server_ip', type=str, default='127.0.0.1', help='server ip, default 127.0.0.1')
+    parser.add_argument('-p', dest='server_port', type=int, default=7777, help='server port, default 7777')
+    parser.add_argument('-w', dest='mode_write', action='store_true', default=False, help='client mode "write" (otherwise "read"), default False')
+    return parser.parse_args(cmd_args)
 
 
 if __name__ == '__main__':
-    server_ip, server_port = None, None
-    try:
-        server_ip, server_port = parse_commandline_args(sys.argv[1:])
-    except:
-        print_usage()
-        exit(1)
-
+    args = parse_commandline_args(sys.argv[1:])
     client_socket = sck.socket(sck.AF_INET, sck.SOCK_STREAM)
-    client_socket.connect((server_ip, server_port))
+    client_socket.connect((args.server_ip, args.server_port))
     message = JimMessage()
     message.set_field('action', 'presence')
     message.set_time()
