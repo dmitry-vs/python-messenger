@@ -3,9 +3,13 @@ from socket import socket, AF_INET, SOCK_STREAM
 import argparse
 import uuid
 from time import sleep
+import logging
 
 import helpers
 from jim import JimMessage, jim_msg_from_bytes
+import log_confing
+
+log = logging.getLogger(helpers.CLIENT_LOGGER_NAME)
 
 
 def parse_commandline_args(cmd_args):
@@ -33,26 +37,33 @@ class Client:
         return presence_message
 
 
+@helpers.log_func_call(log)
 def send_data(sock, data: bytes):
     sock.send(data)
 
 
+@helpers.log_func_call(log)
 def receive_data(sock, size) -> bytes:
     return sock.recv(size)
 
 
 if __name__ == '__main__':
-    args = parse_commandline_args(sys.argv[1:])
-    client = Client(uuid.uuid4().hex[:8])
-    print(f'Started client with username {client.username}, mode', 'write' if args.mode_write else 'read')
-    with socket(AF_INET, SOCK_STREAM) as client_socket:
-        client_socket.connect((args.server_ip, args.server_port))
-        while True:
-            if args.mode_write:
-                message = client.create_presence()
-                print(f'Sending message to server: {message}')
-                send_data(client_socket, message.to_bytes())
-                sleep(1)
-            else:
-                response = receive_data(client_socket, helpers.TCP_MSG_BUFFER_SIZE)
-                print(f'Received from server: {jim_msg_from_bytes(response)}')
+    log.info('Client started')
+    try:
+        args = parse_commandline_args(sys.argv[1:])
+        client = Client(username=uuid.uuid4().hex[:8])
+        print(f'Started client with username {client.username}, mode', 'write' if args.mode_write else 'read')
+        with socket(AF_INET, SOCK_STREAM) as client_socket:
+            client_socket.connect((args.server_ip, args.server_port))
+            while True:
+                if args.mode_write:
+                    message = client.create_presence()
+                    print(f'Sending message to server: {message}')
+                    send_data(client_socket, message.to_bytes())
+                    sleep(1)
+                else:
+                    response = receive_data(client_socket, helpers.TCP_MSG_BUFFER_SIZE)
+                    print(f'Received from server: {jim_msg_from_bytes(response)}')
+    except Exception as e:
+        log.critical(str(e))
+        raise e
