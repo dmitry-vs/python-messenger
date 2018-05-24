@@ -1,6 +1,8 @@
 import sys
 from socket import socket, AF_INET, SOCK_STREAM
 import argparse
+import uuid
+from time import sleep
 
 import helpers
 from jim import JimMessage, jim_msg_from_bytes
@@ -15,19 +17,42 @@ def parse_commandline_args(cmd_args):
     return parser.parse_args(cmd_args)
 
 
+class Client:
+    def __init__(self, username):
+        self.__username = username
+
+    @property
+    def username(self):
+        return self.__username
+
+    def create_presence(self):
+        presence_message = JimMessage()
+        presence_message.set_field('action', 'presence')
+        presence_message.set_time()
+        presence_message.set_field('user', {'account_name': self.__username})
+        return presence_message
+
+
+def send_data(sock, data: bytes):
+    sock.send(data)
+
+
+def receive_data(sock, size) -> bytes:
+    return sock.recv(size)
+
+
 if __name__ == '__main__':
     args = parse_commandline_args(sys.argv[1:])
+    client = Client(uuid.uuid4().hex[:8])
+    print(f'Started client with username {client.username}, mode', 'write' if args.mode_write else 'read')
     with socket(AF_INET, SOCK_STREAM) as client_socket:
         client_socket.connect((args.server_ip, args.server_port))
         while True:
-            import time
             if args.mode_write:
-                message = JimMessage()
-                message.set_field('action', 'presence')
-                message.set_time()
+                message = client.create_presence()
                 print(f'Sending message to server: {message}')
-                client_socket.send(message.to_bytes())
-                time.sleep(1)
+                send_data(client_socket, message.to_bytes())
+                sleep(1)
             else:
-                response = client_socket.recv(helpers.TCP_MSG_BUFFER_SIZE)
-                print(jim_msg_from_bytes(response))
+                response = receive_data(client_socket, helpers.TCP_MSG_BUFFER_SIZE)
+                print(f'Received from server: {jim_msg_from_bytes(response)}')
