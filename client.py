@@ -38,12 +38,16 @@ class Client:
 
 
 @helpers.log_func_call(log)
-def send_data(sock, data: bytes):
-    sock.send(data)
+def send_data(sock, data: bytes) -> int:
+    if type(data) is not bytes:
+        raise TypeError
+    return sock.send(data)
 
 
 @helpers.log_func_call(log)
-def receive_data(sock, size) -> bytes:
+def receive_data(sock, size: int) -> bytes:
+    if size <= 0:
+        raise ValueError
     return sock.recv(size)
 
 
