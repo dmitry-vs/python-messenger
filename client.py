@@ -1,39 +1,73 @@
 import sys
-import socket as sck
+from socket import socket, AF_INET, SOCK_STREAM
+import argparse
+import uuid
+from time import sleep
+import logging
 
 import helpers
 from jim import JimMessage, jim_msg_from_bytes
+import log_confing
+
+log = logging.getLogger(helpers.CLIENT_LOGGER_NAME)
 
 
-def parse_commandline_args(args):
-    if len(args) not in [1, 2]:
-        raise IndexError('Incorrect number of arguments')
+def parse_commandline_args(cmd_args):
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-s', dest='server_ip', type=str, default='127.0.0.1', help='server ip, default 127.0.0.1')
+    parser.add_argument('-p', dest='server_port', type=int, default=7777, help='server port, default 7777')
+    parser.add_argument('-w', dest='mode_write', action='store_true', default=False,
+                        help='client mode "write" (otherwise "read"), default False')
+    return parser.parse_args(cmd_args)
 
-    ip = args[0]
-    port = int(args[1]) if len(args) > 1 else helpers.DEFAULT_SERVER_PORT
-    return ip, port
+
+class Client:
+    def __init__(self, username):
+        self.__username = username
+
+    @property
+    def username(self):
+        return self.__username
+
+    def create_presence(self):
+        presence_message = JimMessage()
+        presence_message.set_field('action', 'presence')
+        presence_message.set_time()
+        presence_message.set_field('user', {'account_name': self.__username})
+        return presence_message
 
 
-def print_usage():
-    print(f'usage: client.py <server_ip> [server_port]')
+@helpers.log_func_call(log)
+def send_data(sock, data: bytes) -> int:
+    if type(data) is not bytes:
+        raise TypeError
+    return sock.send(data)
+
+
+@helpers.log_func_call(log)
+def receive_data(sock, size: int) -> bytes:
+    if size <= 0:
+        raise ValueError
+    return sock.recv(size)
 
 
 if __name__ == '__main__':
-    server_ip, server_port = None, None
+    log.info('Client started')
     try:
-        server_ip, server_port = parse_commandline_args(sys.argv[1:])
-    except:
-        print_usage()
-        exit(1)
-
-    client_socket = sck.socket(sck.AF_INET, sck.SOCK_STREAM)
-    client_socket.connect((server_ip, server_port))
-    message = JimMessage()
-    message.set_field('action', 'presence')
-    message.set_time()
-    print('sending presence message to server')
-    client_socket.send(message.to_bytes())
-    response = client_socket.recv(helpers.TCP_MSG_BUFFER_SIZE)
-    server_message = jim_msg_from_bytes(response)
-    print(f'response from server: {server_message}')
-    client_socket.close()
+        args = parse_commandline_args(sys.argv[1:])
+        client = Client(username=uuid.uuid4().hex[:8])
+        print(f'Started client with username {client.username}, mode', 'write' if args.mode_write else 'read')
+        with socket(AF_INET, SOCK_STREAM) as client_socket:
+            client_socket.connect((args.server_ip, args.server_port))
+            while True:
+                if args.mode_write:
+                    message = client.create_presence()
+                    print(f'Sending message to server: {message}')
+                    send_data(client_socket, message.to_bytes())
+                    sleep(1)
+                else:
+                    response = receive_data(client_socket, helpers.TCP_MSG_BUFFER_SIZE)
+                    print(f'Received from server: {jim_msg_from_bytes(response)}')
+    except Exception as e:
+        log.critical(str(e))
+        raise e
