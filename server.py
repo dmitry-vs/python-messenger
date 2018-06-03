@@ -18,6 +18,10 @@ def parse_commandline_args(cmd_args):
     return parser.parse_args(cmd_args)
 
 
+class Server:
+    pass
+
+
 def mainloop(cmd_args: argparse.Namespace):
     with socket(AF_INET, SOCK_STREAM) as server_socket:
         server_socket.bind((cmd_args.listen_address, cmd_args.listen_port))

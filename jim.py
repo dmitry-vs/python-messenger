@@ -35,3 +35,11 @@ def jim_msg_from_bytes(bytedata):
     ret = JimMessage()
     ret.from_bytes(bytedata)
     return ret
+
+
+class JimRequest(JimMessage):
+    pass
+
+
+class JimResponse(JimMessage):
+    pass
