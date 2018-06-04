@@ -31,15 +31,63 @@ class JimMessage:
         return self.__datadict == other.datadict
 
 
-def jim_msg_from_bytes(bytedata):
-    ret = JimMessage()
+class JimRequest(JimMessage):
+    def __init__(self):
+        super().__init__()
+
+
+def jim_request_from_bytes(bytedata: bytes) -> JimRequest:
+    ret = JimRequest()
     ret.from_bytes(bytedata)
     return ret
 
 
-class JimRequest(JimMessage):
-    pass
-
-
 class JimResponse(JimMessage):
-    pass
+    def __init__(self):
+        self._response = None
+        self._alert = None
+        self._error = None
+        super().__init__()
+
+    @property
+    def response(self):
+        return self._response
+
+    @response.setter
+    def response(self, value: int):
+        self.set_field("response", value)
+        self._response = value
+
+    @property
+    def alert(self):
+        return self._alert
+
+    @alert.setter
+    def alert(self, value: str):
+        self.set_field("alert", value)
+        self._alert = value
+
+    @property
+    def error(self):
+        return self._error
+
+    @error.setter
+    def error(self, value: str):
+        self.set_field("error", value)
+        self._error = value
+
+    def from_bytes(self, bytedata):
+        json_data = bytedata.decode('utf-8')
+        dict_data = json.loads(json_data)
+        self.response = dict_data["response"]
+        alert_key, error_key = "alert", "error"
+        if alert_key in dict_data:
+            self.alert = dict_data["alert"]
+        if error_key in dict_data:
+            self.error = dict_data["error"]
+
+
+def jim_response_from_bytes(bytedata: bytes) -> JimResponse:
+    ret = JimResponse()
+    ret.from_bytes(bytedata)
+    return ret

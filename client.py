@@ -6,7 +6,7 @@ from time import sleep
 import logging
 
 import helpers
-from jim import JimMessage, jim_msg_from_bytes
+from jim import JimRequest, jim_request_from_bytes
 import log_confing
 
 log = logging.getLogger(helpers.CLIENT_LOGGER_NAME)
@@ -30,7 +30,7 @@ class Client:
         return self.__username
 
     def create_presence(self):
-        presence_message = JimMessage()
+        presence_message = JimRequest()
         presence_message.set_field('action', 'presence')
         presence_message.set_time()
         presence_message.set_field('user', {'account_name': self.__username})
@@ -53,7 +53,7 @@ if __name__ == '__main__':
     log.info('Client started')
     try:
         args = parse_commandline_args(sys.argv[1:])
-        client = Client(username=uuid.uuid4().hex[:8])
+        client = Client(username=uuid.uuid4().hex[:8])  # using random username
         print(f'Started client with username {client.username}, mode', 'write' if args.mode_write else 'read')
         with socket(AF_INET, SOCK_STREAM) as client_socket:
             client_socket.connect((args.server_ip, args.server_port))
@@ -65,7 +65,7 @@ if __name__ == '__main__':
                     sleep(1)
                 else:
                     response = receive_data(client_socket, helpers.TCP_MSG_BUFFER_SIZE)
-                    print(f'Received from server: {jim_msg_from_bytes(response)}')
+                    print(f'Received from server: {jim_request_from_bytes(response)}')
     except Exception as e:
         log.critical(str(e))
         raise e
