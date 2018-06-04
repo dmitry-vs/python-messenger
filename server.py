@@ -3,6 +3,7 @@ from socket import socket, AF_INET, SOCK_STREAM
 import sys
 import select
 import logging
+import inspect
 
 import helpers
 import log_confing
@@ -18,7 +19,28 @@ def parse_commandline_args(cmd_args):
     return parser.parse_args(cmd_args)
 
 
-class Server:
+class ServerVerifierMeta(type):
+    def __init__(cls, clsname, bases, clsdict):
+        tcp_found = False
+
+        for key, value in clsdict.items():
+            if not hasattr(value, '__call__'):  # we need only methods further
+                continue
+
+            source = inspect.getsource(value)
+            if '.connect(' in source:  # check there are no connect() socket calls
+                raise RuntimeError('Server must not use connect for sockets')
+
+            if 'SOCK_STREAM' in source:  # check that TCP sockets are used
+                tcp_found = True
+
+        if not tcp_found:
+            raise RuntimeError('Server must use only TCP sockets')
+
+        type.__init__(cls, clsname, bases, clsdict)
+
+
+class Server(metaclass=ServerVerifierMeta):
     def __init__(self):
         self._socket = socket(AF_INET, SOCK_STREAM)
 

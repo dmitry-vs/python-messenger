@@ -4,6 +4,7 @@ import argparse
 import uuid
 from time import sleep
 import logging
+import inspect
 
 import helpers
 from jim import JimRequest, jim_request_from_bytes
@@ -21,7 +22,31 @@ def parse_commandline_args(cmd_args):
     return parser.parse_args(cmd_args)
 
 
-class Client:
+class ClientVerifierMeta(type):
+    def __init__(cls, clsname, bases, clsdict):
+        tcp_found = False
+
+        for key, value in clsdict.items():
+            if type(value) is socket:  # check this is not class-level socket
+                raise RuntimeError('Client must not use class-level sockets')
+
+            if not hasattr(value, '__call__'):  # we need only methods further
+                continue
+
+            source = inspect.getsource(value)
+            if '.accept(' in source or '.listen(' in source:  # check there are no accept() or listen() socket calls
+                raise RuntimeError('Client must not use accept or listen for sockets')
+
+            if 'SOCK_STREAM' in source:  # check that TCP sockets are used
+                tcp_found = True
+
+        if not tcp_found:
+            raise RuntimeError('Client must use only TCP sockets')
+
+        type.__init__(cls, clsname, bases, clsdict)
+
+
+class Client(metaclass=ClientVerifierMeta):
     def __init__(self, username):
         self._username = username
         self._socket = socket(AF_INET, SOCK_STREAM)

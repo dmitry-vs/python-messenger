@@ -14,7 +14,7 @@ if __name__ == '__main__':
     process_pair_count = 5
 
     for _ in range(0, process_pair_count):
-        sleep(0.33)
+        sleep(0.6)
         subprocess.Popen(start_client_readmode_command, creationflags=subprocess.CREATE_NEW_CONSOLE)
-        sleep(0.33)
+        sleep(0.6)
         subprocess.Popen(start_client_writemode_command, creationflags=subprocess.CREATE_NEW_CONSOLE)
