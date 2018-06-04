@@ -57,6 +57,8 @@ class Server:
                         print(f'Client disconnected: {client_socket.getpeername()}')
                         client_socket.close()
                         clients.remove(client_socket)
+                        if client_socket in writable:
+                            writable.remove(client_socket)
 
                 # broadcast requests to all writable clients
                 for req in requests.values():
