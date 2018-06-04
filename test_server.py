@@ -1,12 +1,12 @@
 import pytest
 
-from server import parse_commandline_args
+from server import parse_commandline_args, Server
 from helpers import DEFAULT_SERVER_PORT
 
 
 # tests for: parse_commandline_args
 test_ip = '1.2.3.4'
-test_port = '1234'
+test_port = '55555'
 
 
 def test_none_args_set__results_are_default_values():
@@ -36,3 +36,12 @@ def test_two_args_set__both_results_are_correct():
 def test_unknown_args__raises():
     with pytest.raises(SystemExit):
         parse_commandline_args(['-z', 'zzz'])
+
+
+class TestServer:
+    def test__init__no_errors(self):
+        Server()
+
+    def test__set_settings__correct_settings_no_errors(self):
+        test_server = Server()
+        test_server.set_settings('', int(test_port), clients_limit=1000, timeout=1)
