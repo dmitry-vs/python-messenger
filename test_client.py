@@ -1,8 +1,9 @@
 import pytest
-import socket
+import uuid
 
-from client import parse_commandline_args, send_data, receive_data
+from client import parse_commandline_args, Client
 from helpers import DEFAULT_SERVER_IP, DEFAULT_SERVER_PORT
+from jim import JimRequest
 
 
 # tests for: parse_commandline_args
@@ -38,45 +39,55 @@ def test_write_mode_set__correct_mode_others_default():
     assert test.mode_write is True
 
 
-# tests for: send_data
-test_sock = socket.socket()
+class TestClient:
+    test_username = uuid.uuid4().hex[:8]
 
+    @staticmethod
+    def socket_send_mock(self, data):
+        return len(data)
 
-def socket_send_mock(self, data):
-    return len(data)
+    @staticmethod
+    def socket_recv_mock(self, size):
+        return b'\xff' * size
 
+    def setup(self):
+        self.test_client = Client(self.test_username)
 
-def test_data_not_empty__return_data_len(monkeypatch):
-    test_data = b'test_data'
-    monkeypatch.setattr('socket.socket.send', socket_send_mock)
-    assert send_data(test_sock, test_data) == len(test_data)
+    def test__init_and_del__do_not_raise(self):
+        Client(self.test_username)
 
+    def test__send_data__test_data_not_empty__return_data_len(self, monkeypatch):
+        test_data = b'test_data'
+        monkeypatch.setattr('socket.socket.send', self.socket_send_mock)
+        assert self.test_client.send_data(test_data) == len(test_data)
 
-def test_data_empty__return_zero(monkeypatch):
-    monkeypatch.setattr('socket.socket.send', socket_send_mock)
-    assert send_data(test_sock, b'') == 0
+    def test__send_data__data_empty__return_zero(self, monkeypatch):
+        monkeypatch.setattr('socket.socket.send', self.socket_send_mock)
+        assert self.test_client.send_data(b'') == 0
 
+    def test__send_data__data_has_wrong_type__raises_typeerror(self, monkeypatch):
+        monkeypatch.setattr('socket.socket.send', self.socket_send_mock)
+        with pytest.raises(Exception):
+            self.test_client.send_data([1, 2, 3])
 
-def test_data_has_wrong_type__raises_typeerror(monkeypatch):
-    monkeypatch.setattr('socket.socket.send', socket_send_mock)
-    with pytest.raises(Exception):
-        send_data(test_sock, [1, 2, 3])
+    def test__receive_data__size_positive__correct_number_of_bytes_received(self, monkeypatch):
+        monkeypatch.setattr('socket.socket.recv', self.socket_recv_mock)
+        test_len = 150
+        assert len(self.test_client.receive_data(test_len)) == test_len
 
+    def test__receive_data__size_not_positive__raises_valueerror(self, monkeypatch):
+        monkeypatch.setattr('socket.socket.recv', self.socket_recv_mock)
+        with pytest.raises(ValueError):
+            self.test_client.receive_data(0)
+        with pytest.raises(ValueError):
+            self.test_client.receive_data(-123)
 
-# tests for: receive_data
-def socket_recv_mock(self, size):
-    return b'a' * size
+    def test__send_message_to_server__correct_message__no_errors(self, monkeypatch):
+        monkeypatch.setattr('socket.socket.send', self.socket_send_mock)
+        test_message = JimRequest()
+        test_message.set_field('test_key', 'test_val')
+        self.test_client.send_message_to_server(test_message)
 
-
-def test_size_positive__correct_number_of_bytes_received(monkeypatch):
-    monkeypatch.setattr('socket.socket.recv', socket_recv_mock)
-    test_len = 150
-    assert len(receive_data(test_sock, test_len)) == test_len
-
-
-def test_size_not_positive__raises_valueerror(monkeypatch):
-    monkeypatch.setattr('socket.socket.recv', socket_recv_mock)
-    with pytest.raises(ValueError):
-        receive_data(test_sock, 0)
-    with pytest.raises(ValueError):
-        receive_data(test_sock, -123)
+    def test__send_message_to_server__incorrect_input_type_raises(self):
+        with pytest.raises(AttributeError):
+            self.test_client.send_message_to_server([1, 2, 3])

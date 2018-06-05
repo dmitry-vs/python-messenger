@@ -105,3 +105,6 @@ venv.bak/
 
 # pycharm
 .idea/*
+
+# TimedRotatingFileHandler logs
+messenger.server.log.*

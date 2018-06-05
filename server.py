@@ -3,6 +3,7 @@ from socket import socket, AF_INET, SOCK_STREAM
 import sys
 import select
 import logging
+import inspect
 
 import helpers
 import log_confing
@@ -18,16 +19,45 @@ def parse_commandline_args(cmd_args):
     return parser.parse_args(cmd_args)
 
 
-def mainloop(cmd_args: argparse.Namespace):
-    with socket(AF_INET, SOCK_STREAM) as server_socket:
-        server_socket.bind((cmd_args.listen_address, cmd_args.listen_port))
-        server_socket.listen(helpers.CLIENTS_COUNT_LIMIT)
-        server_socket.settimeout(helpers.SERVER_SOCKET_TIMEOUT)
-        clients = []
+class ServerVerifierMeta(type):
+    def __init__(cls, clsname, bases, clsdict):
+        tcp_found = False
 
+        for key, value in clsdict.items():
+            if not hasattr(value, '__call__'):  # we need only methods further
+                continue
+
+            source = inspect.getsource(value)
+            if '.connect(' in source:  # check there are no connect() socket calls
+                raise RuntimeError('Server must not use connect for sockets')
+
+            if 'SOCK_STREAM' in source:  # check that TCP sockets are used
+                tcp_found = True
+
+        if not tcp_found:
+            raise RuntimeError('Server must use only TCP sockets')
+
+        type.__init__(cls, clsname, bases, clsdict)
+
+
+class Server(metaclass=ServerVerifierMeta):
+    def __init__(self):
+        self._socket = socket(AF_INET, SOCK_STREAM)
+
+    def set_settings(self, listen_address, listen_port,
+                     clients_limit=helpers.CLIENTS_COUNT_LIMIT, timeout=helpers.SERVER_SOCKET_TIMEOUT):
+        self._socket.bind((listen_address, listen_port))
+        self._socket.listen(clients_limit)
+        self._socket.settimeout(timeout)
+
+    def __del__(self):
+        self._socket.close()
+
+    def mainloop(self):
+        clients = []
         while True:
             try:
-                conn, addr = server_socket.accept()  # check for new connections
+                conn, addr = self._socket.accept()  # check for new connections
             except OSError:
                 pass  # timeout, do nothing
             else:
@@ -49,6 +79,8 @@ def mainloop(cmd_args: argparse.Namespace):
                         print(f'Client disconnected: {client_socket.getpeername()}')
                         client_socket.close()
                         clients.remove(client_socket)
+                        if client_socket in writable:
+                            writable.remove(client_socket)
 
                 # broadcast requests to all writable clients
                 for req in requests.values():
@@ -66,7 +98,9 @@ if __name__ == '__main__':
     log.info('Server started')
     try:
         args = parse_commandline_args(sys.argv[1:])
-        mainloop(args)
+        server = Server()
+        server.set_settings(args.listen_address, args.listen_port)
+        server.mainloop()
     except Exception as e:
         log.critical(str(e))
         raise e
