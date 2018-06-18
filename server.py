@@ -42,22 +42,22 @@ class ServerVerifierMeta(type):
 
 class Server(metaclass=ServerVerifierMeta):
     def __init__(self):
-        self._socket = socket(AF_INET, SOCK_STREAM)
+        self.__socket = socket(AF_INET, SOCK_STREAM)
 
     def set_settings(self, listen_address, listen_port,
                      clients_limit=helpers.CLIENTS_COUNT_LIMIT, timeout=helpers.SERVER_SOCKET_TIMEOUT):
-        self._socket.bind((listen_address, listen_port))
-        self._socket.listen(clients_limit)
-        self._socket.settimeout(timeout)
+        self.__socket.bind((listen_address, listen_port))
+        self.__socket.listen(clients_limit)
+        self.__socket.settimeout(timeout)
 
     def __del__(self):
-        self._socket.close()
+        self.__socket.close()
 
     def mainloop(self):
         clients = []
         while True:
             try:
-                conn, addr = self._socket.accept()  # check for new connections
+                conn, addr = self.__socket.accept()  # check for new connections
             except OSError:
                 pass  # timeout, do nothing
             else:

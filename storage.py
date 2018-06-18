@@ -101,7 +101,7 @@ class DBStorageClient(DBStorage):
         ''')
         self._conn.commit()
 
-    def add_new_contact(self, login: str):
+    def add_contact(self, login: str):
         self._cursor.execute('INSERT INTO `Contacts` VALUES(NULL, ?)', (login,))
         self._conn.commit()
 
@@ -112,8 +112,16 @@ class DBStorageClient(DBStorage):
         except IndexError:
             return None
 
-    def add_new_message(self, contact_id: int, incoming: bool, text: str):
+    def add_message(self, contact_id: int, incoming: bool, text: str):
         self._cursor.execute('INSERT INTO `Messages` VALUES (NULL, ?, ?, ?)', (contact_id, int(incoming), text))
+        self._conn.commit()
+
+    def get_contacts(self) -> list:
+        self._cursor.execute('SELECT `login` FROM `Contacts`')
+        return [item[0] for item in self._cursor.fetchall()]
+
+    def delete_contact(self, login: str):
+        self._cursor.execute('DELETE FROM `Contacts` WHERE `login` == ?', (login,))
         self._conn.commit()
 
 

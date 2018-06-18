@@ -159,23 +159,23 @@ class TestDBStorageClient:
         assert 'Messages' in table_names
 
     def test__add_new_contact__not_added_yet__correct_row_added(self):
-        self.storage.add_new_contact(self.test_login)
+        self.storage.add_contact(self.test_login)
         self.cursor.execute('SELECT `login` FROM `Contacts` WHERE `id` == 1')
         assert self.cursor.fetchall()[0][0] == self.test_login
 
     def test__add_new_contact__already_added__raises(self):
-        self.storage.add_new_contact(self.test_login)
+        self.storage.add_contact(self.test_login)
         with pytest.raises(sqlite3.Error):
-            self.storage.add_new_contact(self.test_login)
+            self.storage.add_contact(self.test_login)
 
     def test__add_new_contact__input_incorrect__raises(self):
         with pytest.raises(sqlite3.Error):
-            self.storage.add_new_contact(None)
+            self.storage.add_contact(None)
         with pytest.raises(sqlite3.Error):
-            self.storage.add_new_contact({})
+            self.storage.add_contact({})
 
     def test__get_contact_id__contact_exists__return_correct_value(self):
-        self.storage.add_new_contact(self.test_login)
+        self.storage.add_contact(self.test_login)
         assert self.storage.get_contact_id(self.test_login) == 1
 
     def test__get_contact_id__no_such_contact__return_none(self):
@@ -185,9 +185,9 @@ class TestDBStorageClient:
         assert self.storage.get_contact_id(None) is None
 
     def test__add_new_message__input_ok_incoming__correct_row_added(self):
-        self.storage.add_new_contact(self.test_login)
+        self.storage.add_contact(self.test_login)
 
-        self.storage.add_new_message(1, True, self.test_message)
+        self.storage.add_message(1, True, self.test_message)
 
         self.cursor.execute('SELECT * FROM `Messages`')
         result = self.cursor.fetchall()
@@ -195,9 +195,9 @@ class TestDBStorageClient:
         assert result[0] == (1, 1, int(True), self.test_message)
 
     def test__add_new_message__input_ok_outcoming__correct_row_added(self):
-        self.storage.add_new_contact(self.test_login)
+        self.storage.add_contact(self.test_login)
 
-        self.storage.add_new_message(1, False, self.test_message)
+        self.storage.add_message(1, False, self.test_message)
 
         self.cursor.execute('SELECT * FROM `Messages`')
         result = self.cursor.fetchall()
@@ -206,11 +206,11 @@ class TestDBStorageClient:
 
     def test__add_new_message__input_incorrect__raises(self):
         with pytest.raises(sqlite3.Error):
-            self.storage.add_new_message(None, True, self.test_message)
-        self.storage.add_new_contact(self.test_login)
+            self.storage.add_message(None, True, self.test_message)
+        self.storage.add_contact(self.test_login)
         with pytest.raises(TypeError):
-            self.storage.add_new_message(1, None, self.test_message)
+            self.storage.add_message(1, None, self.test_message)
         with pytest.raises(sqlite3.Error):
-            self.storage.add_new_message(1, True, None)
+            self.storage.add_message(1, True, None)
         with pytest.raises(sqlite3.Error):
-            self.storage.add_new_message(1, False, None)
+            self.storage.add_message(1, False, None)
