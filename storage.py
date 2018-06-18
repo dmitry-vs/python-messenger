@@ -77,6 +77,17 @@ class DBStorageServer(DBStorage):
         self._cursor.execute('INSERT INTO `ClientContacts` VALUES (?, ?);', (owner_id, client_id))
         self._conn.commit()
 
+    def del_client_from_contacts(self, owner_id: int, client_id: int):
+        self._cursor.execute('DELETE FROM `ClientContacts` WHERE `owner_id` == ? AND `contact_id` == ?',
+                             (owner_id, client_id))
+        self._conn.commit()
+
+    def get_client_contacts(self, client_id):
+        query = '''select `Clients`.login from `ClientContacts` join `Clients` 
+        where (`ClientContacts`.contact_id == `Clients`.id and `ClientContacts`.owner_id == ?);'''
+        self._cursor.execute(query, (client_id,))
+        return [item[0] for item in self._cursor.fetchall()]
+
 
 class DBStorageClient(DBStorage):
     def __init__(self, database):

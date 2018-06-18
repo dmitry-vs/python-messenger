@@ -86,7 +86,7 @@ class Client(metaclass=ClientVerifierMeta):
         if bytes_sent != msg_bytes_len:
             raise RuntimeError(f'socket.send() returned {bytes_sent}, but expected {msg_bytes_len}')
 
-    def receive_message_from_server(self) -> JimResponse:  # this must be JimResponse later
+    def receive_message_from_server(self) -> JimResponse:
         received_data = self.receive_data()
         return jim_response_from_bytes(received_data)
 
@@ -123,17 +123,16 @@ class Client(metaclass=ClientVerifierMeta):
     def get_contacts(self) -> list:
         return self.__storage.get_contacts()
 
-    def update_contacts(self, contacts_server: list):
-        contacts_client = self.get_contacts()
-
+    def update_contacts(self, cont_server: list):
+        cont_client = self.get_contacts()
         # if contact in client list, but not in server list - delete from client list
-        # if contact in server list, but not in client lise - add to client list
-        for contact in contacts_client:
-            if contact not in contacts_server:
-                self.__storage.delete_contact(contact)
-        for contact in contacts_server:
-            if contact not in contacts_client:
-                self.__storage.add_contact(contact)
+        # if contact in server list, but not in client list - add to client list
+        for cont in cont_client:
+            if cont not in cont_server:
+                self.__storage.delete_contact(cont)
+        for cont in contacts_server:
+            if cont not in cont_client:
+                self.__storage.add_contact(cont)
 
 
 if __name__ == '__main__':
@@ -149,8 +148,8 @@ if __name__ == '__main__':
         print('Sending presence message to server...')
         client.send_message_to_server(presence_request)
         presence_response = client.receive_message_from_server()
-        if presence_response.datadict['response'] != '200':
-            raise RuntimeError('Presence: expected 200, received presence_response["response"]')
+        if presence_response.datadict['response'] != 200:
+            raise RuntimeError(f'Presence: expected 200, received {presence_response.datadict["response"]}')
 
         while True:
             menu = {
@@ -177,11 +176,11 @@ Choose operation:
                 request = client.create_get_contacts_message()
                 client.send_message_to_server(request)
                 response = client.receive_message_from_server()
-                if response.datadict['response'] != '202':
+                if response.datadict['response'] != 202:
                     raise RuntimeError(f'Get contacts: expected 202, received: {response.datadict["response"]}')
 
                 contacts_server = []
-                for _ in range(0,  response.datadict['quantity']):
+                for _ in range(0, response.datadict['quantity']):
                     contact_message = client.receive_message_from_server()
                     if contact_message.datadict['action'] != 'contact_list':
                         raise RuntimeError(f'Get contacts: expected action "contact_list", received: {contact_message.datadict["action"]}')
@@ -196,7 +195,7 @@ Choose operation:
                 request = client.create_add_contact_message(contact_login)
                 client.send_message_to_server(request)
                 response = client.receive_message_from_server()
-                if response.datadict['response'] != '200':
+                if response.datadict['response'] != 200:
                     raise RuntimeError(f'Add contact: expected response 200, received: {response.datadict["response"]}')
             elif menu[user_choice] == MENU_ITEM_DELETE_CONTACT:
                 contact_login = input('Print login of user to delete: >')
@@ -205,7 +204,7 @@ Choose operation:
                 request = client.create_delete_contact_message(contact_login)
                 client.send_message_to_server(request)
                 response = client.receive_message_from_server()
-                if response.datadict['response'] != '200':
+                if response.datadict['response'] != 200:
                     raise RuntimeError(f'Delete contact: expected response 200, received: response.datadict["response"]')
             elif menu[user_choice] == MENU_ITEM_SEND_MESSAGE:
                 contacts = client.get_contacts()
@@ -213,16 +212,6 @@ Choose operation:
                     print(f'{index + 1}. {contact}')
             else:
                 continue
-
-        # while True:
-        #     if args.mode_write:
-        #         message = client.create_presence_message()
-        #         print(f'Sending message to server: {message}')
-        #         client.send_message_to_server(message)
-        #         sleep(1)
-        #     else:
-        #         response = client.receive_message_from_server()
-        #         print(f'Received from server: {response}')
     except Exception as e:
         log.critical(str(e))
         raise e
