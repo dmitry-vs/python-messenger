@@ -3,18 +3,14 @@ from socket import socket, AF_INET, SOCK_STREAM
 import argparse
 import logging
 import inspect
+import traceback
 
 import helpers
-from jim import JimRequest, JimResponse, jim_request_from_bytes, jim_response_from_bytes
+import jim
 from storage import DBStorageClient
 import log_confing
 
 log = logging.getLogger(helpers.CLIENT_LOGGER_NAME)
-
-MENU_ITEM_GET_CONTACTS = 'Get contacts'
-MENU_ITEM_ADD_CONTACT = 'Add contact'
-MENU_ITEM_DELETE_CONTACT = 'Delete contact'
-MENU_ITEM_SEND_MESSAGE = 'Send message'
 
 
 def parse_commandline_args(cmd_args):
@@ -50,6 +46,8 @@ class ClientVerifierMeta(type):
 
 
 class Client(metaclass=ClientVerifierMeta):
+    supported_commands = ['get_contacts', 'add_contact', 'delete_contact', 'send_message']
+
     def __init__(self, username, storage):
         self.__username = username
         self.__socket = socket(AF_INET, SOCK_STREAM)
@@ -79,60 +77,78 @@ class Client(metaclass=ClientVerifierMeta):
             raise ValueError
         return self.__socket.recv(size)
 
-    def send_message_to_server(self, msg: JimRequest):
+    def send_message_to_server(self, msg: jim.JimRequest):
         msg_bytes = msg.to_bytes()
         msg_bytes_len = len(msg_bytes)
         bytes_sent = self.send_data(msg_bytes)
         if bytes_sent != msg_bytes_len:
             raise RuntimeError(f'socket.send() returned {bytes_sent}, but expected {msg_bytes_len}')
 
-    def receive_message_from_server(self) -> JimResponse:
+    def receive_message_from_server(self) -> jim.JimResponse:
         received_data = self.receive_data()
-        return jim_response_from_bytes(received_data)
+        return jim.response_from_bytes(received_data)
 
-    def create_presence_message(self) -> JimRequest:
-        message = JimRequest()
-        message.set_field('action', 'presence')
-        message.set_time()
-        message.set_field('user', {'account_name': self.__username})
-        return message
+    def run_command(self, command: str):
+        if command == 'get_contacts':
+            request = jim.get_contacts_request()
+            self.send_message_to_server(request)
+            response = self.receive_message_from_server()
+            print(request, response)  #
+            if response.response != 202:
+                raise RuntimeError(f'Get contacts: expected 202, '
+                                   f'received: {response.response}, error: {response.datadict["error"]}')
 
-    @staticmethod
-    def create_get_contacts_message() -> JimRequest:
-        message = JimRequest()
-        message.set_field('action', 'get_contacts')
-        message.set_time()
-        return message
+            contacts_server = []
+            for _ in range(0, response.datadict['quantity']):
+                contact_message = self.receive_message_from_server()
+                print(contact_message)  #
+                if contact_message.datadict['action'] != 'contact_list':
+                    raise RuntimeError(f'Get contacts: expected action "contact_list", '
+                                       f'received: {contact_message.datadict["action"]}')
+                if contact_message.datadict['user_id'] not in contacts_server:
+                    contacts_server.append(contact_message.datadict['user_id'])
 
-    @staticmethod
-    def create_add_contact_message(login: str) -> JimRequest:
-        message = JimRequest()
-        message.set_field('action', 'add_contact')
-        message.set_field('user_id', login)
-        message.set_time()
-        return message
+            self.storage.update_contacts(contacts_server)
+        elif command == 'add_contact':
+            contact_login = input('Print login of user to add: >')
+            if not contact_login:
+                raise RuntimeError('Login cannot be empty')
+            request = jim.add_contact_request(contact_login)
+            self.send_message_to_server(request)
+            response = self.receive_message_from_server()
+            print(request, response)  #
+            if response.response != 200:
+                raise RuntimeError(f'Add contact: expected response 200, '
+                                   f'received: {response.response}, error: {response.datadict["error"]}')
+        elif command == 'delete_contact':
+            contact_login = input('Print login of user to delete: >')
+            if not contact_login:
+                raise RuntimeError('Login cannot be empty')
+            request = jim.delete_contact_request(contact_login)
+            self.send_message_to_server(request)
+            response = self.receive_message_from_server()
+            print(request, response)  #
+            if response.response != 200:
+                raise RuntimeError(f'Delete contact: expected response 200, '
+                                   f'received: {response.response}, error: {response.datadict["error"]}')
+        elif command == 'send_message':
+            for index, contact in enumerate(self.storage.get_contacts()):
+                print(f'{index + 1}. {contact}')
 
-    @staticmethod
-    def create_delete_contact_message(login: str) -> JimRequest:
-        message = JimRequest()
-        message.set_field('action', 'del_contact')
-        message.set_field('user_id', login)
-        message.set_time()
-        return message
 
-    def get_contacts(self) -> list:
-        return self.__storage.get_contacts()
+class Menu:
+    def __init__(self, commands: list):
+        self._commands = {index + 1: item for index, item in enumerate(commands)}
 
-    def update_contacts(self, cont_server: list):
-        cont_client = self.get_contacts()
-        # if contact in client list, but not in server list - delete from client list
-        # if contact in server list, but not in client list - add to client list
-        for cont in cont_client:
-            if cont not in cont_server:
-                self.__storage.delete_contact(cont)
-        for cont in contacts_server:
-            if cont not in cont_client:
-                self.__storage.add_contact(cont)
+    def get_command(self, command_index):
+        return self._commands[command_index]
+
+    def __str__(self):
+        result = '\nChoose command:\n'
+        for key, val in self._commands.items():
+            result += f'{key}. {val}\n'
+        result += '>'
+        return result
 
 
 if __name__ == '__main__':
@@ -142,75 +158,26 @@ if __name__ == '__main__':
         client = Client(username=args.user_name, storage=':memory:')
         print(f'Started client with username {client.username}')
         client.connect(args.server_ip, args.server_port)
-
-        # client work logic
-        presence_request = client.create_presence_message()
+        presence_request = jim.presence_request(client.username)
         print('Sending presence message to server...')
         client.send_message_to_server(presence_request)
         presence_response = client.receive_message_from_server()
+        print(presence_request, presence_response)  #
         if presence_response.datadict['response'] != 200:
-            raise RuntimeError(f'Presence: expected 200, received {presence_response.datadict["response"]}')
+            raise RuntimeError(f'Presence: expected 200, '
+                               f'received {presence_response.response}, error: {presence_response.datadict["error"]}')
+        print('Received 200, OK')
 
         while True:
-            menu = {
-                1: MENU_ITEM_GET_CONTACTS,
-                2: MENU_ITEM_ADD_CONTACT,
-                3: MENU_ITEM_DELETE_CONTACT,
-                4: MENU_ITEM_SEND_MESSAGE
-            }
-
-            menu_str = f'''
-Choose operation:
-1. {MENU_ITEM_GET_CONTACTS}
-2. {MENU_ITEM_ADD_CONTACT}
-3. {MENU_ITEM_DELETE_CONTACT}
-4. {MENU_ITEM_SEND_MESSAGE}
->'''
             user_choice = None
             try:
-                user_choice = int(input(menu_str))
+                main_menu = Menu(Client.supported_commands)
+                user_choice = int(input(main_menu))
+                client.run_command(main_menu.get_command(user_choice))
+            except KeyboardInterrupt:
+                exit(1)
             except:
-                continue
-
-            if menu[user_choice] == MENU_ITEM_GET_CONTACTS:
-                request = client.create_get_contacts_message()
-                client.send_message_to_server(request)
-                response = client.receive_message_from_server()
-                if response.datadict['response'] != 202:
-                    raise RuntimeError(f'Get contacts: expected 202, received: {response.datadict["response"]}')
-
-                contacts_server = []
-                for _ in range(0, response.datadict['quantity']):
-                    contact_message = client.receive_message_from_server()
-                    if contact_message.datadict['action'] != 'contact_list':
-                        raise RuntimeError(f'Get contacts: expected action "contact_list", received: {contact_message.datadict["action"]}')
-                    if contact_message.datadict['nickname'] not in contacts_server:
-                        contacts_server.append(contact_message.datadict['nickname'])
-
-                client.update_contacts(contacts_server)
-            elif menu[user_choice] == MENU_ITEM_ADD_CONTACT:
-                contact_login = input('Print login of user to add: >')
-                if not contact_login:
-                    raise RuntimeError('Login cannot be empty')
-                request = client.create_add_contact_message(contact_login)
-                client.send_message_to_server(request)
-                response = client.receive_message_from_server()
-                if response.datadict['response'] != 200:
-                    raise RuntimeError(f'Add contact: expected response 200, received: {response.datadict["response"]}')
-            elif menu[user_choice] == MENU_ITEM_DELETE_CONTACT:
-                contact_login = input('Print login of user to delete: >')
-                if not contact_login:
-                    raise RuntimeError('Login cannot be empty')
-                request = client.create_delete_contact_message(contact_login)
-                client.send_message_to_server(request)
-                response = client.receive_message_from_server()
-                if response.datadict['response'] != 200:
-                    raise RuntimeError(f'Delete contact: expected response 200, received: response.datadict["response"]')
-            elif menu[user_choice] == MENU_ITEM_SEND_MESSAGE:
-                contacts = client.get_contacts()
-                for contact, index in enumerate(client.get_contacts()):
-                    print(f'{index + 1}. {contact}')
-            else:
+                traceback.print_exc()
                 continue
     except Exception as e:
         log.critical(str(e))

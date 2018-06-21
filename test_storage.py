@@ -43,28 +43,28 @@ class TestDBStorageServer:
             self.storage.get_client_id({})
 
     def test__add_new_client__correct_input__can_find_client_by_login(self):
-        self.storage.add_new_client(self.test_login)
+        self.storage.add_client(self.test_login)
         assert self.storage.get_client_id(self.test_login) == 1
 
     def test__add_new_client__already_exists__raises(self):
         with pytest.raises(sqlite3.Error):
-            self.storage.add_new_client(self.test_login)
-            self.storage.add_new_client(self.test_login)
+            self.storage.add_client(self.test_login)
+            self.storage.add_client(self.test_login)
 
     def test__add_new_client__login_none_or_empty__raises(self):
         with pytest.raises(ValueError):
-            self.storage.add_new_client(None)
+            self.storage.add_client(None)
         with pytest.raises(ValueError):
-            self.storage.add_new_client('')
+            self.storage.add_client('')
 
     def test__add_new_client__login_not_str__raises(self):
         with pytest.raises(sqlite3.Error):
-            self.storage.add_new_client([1, 2])
+            self.storage.add_client([1, 2])
         with pytest.raises(ValueError):
-            self.storage.add_new_client({})
+            self.storage.add_client({})
 
     def test__update_client__client_exists__correct_parameters_in_table(self):
-        self.storage.add_new_client(self.test_login)
+        self.storage.add_client(self.test_login)
         client_id = self.storage.get_client_id(self.test_login)
 
         self.storage.update_client(client_id, self.test_time, self.test_ip, self.test_info)
@@ -74,7 +74,7 @@ class TestDBStorageServer:
         assert actual_values[0] == (self.test_login, self.test_info, self.test_time, self.test_ip)
 
     def test__update_client__info_is_none__correct_parameters_in_table(self):
-        self.storage.add_new_client(self.test_login)
+        self.storage.add_client(self.test_login)
         client_id = self.storage.get_client_id(self.test_login)
 
         self.storage.update_client(client_id, self.test_time, self.test_ip)
@@ -85,8 +85,8 @@ class TestDBStorageServer:
         assert actual_values[0] == (self.test_login, None, self.test_time, self.test_ip)
 
     def test__add_client_to_contacts__client_not_in_contacts__client_added(self):
-        self.storage.add_new_client(self.test_login)
-        self.storage.add_new_client(self.test_second_login)
+        self.storage.add_client(self.test_login)
+        self.storage.add_client(self.test_second_login)
         first_client_id = self.storage.get_client_id(self.test_login)
         second_client_id = self.storage.get_client_id(self.test_second_login)
 
@@ -97,8 +97,8 @@ class TestDBStorageServer:
         assert self.cursor.fetchall()[0][0] == 1
 
     def test__add_client_to_contacts_clients_add_each_other__no_errors(self):
-        self.storage.add_new_client(self.test_login)
-        self.storage.add_new_client(self.test_second_login)
+        self.storage.add_client(self.test_login)
+        self.storage.add_client(self.test_second_login)
         first_client_id = self.storage.get_client_id(self.test_login)
         second_client_id = self.storage.get_client_id(self.test_second_login)
 
@@ -106,8 +106,8 @@ class TestDBStorageServer:
         self.storage.add_client_to_contacts(second_client_id, first_client_id)
 
     def test__add_client_to_contacts__client_already_in_contacts__raises(self):
-        self.storage.add_new_client(self.test_login)
-        self.storage.add_new_client(self.test_second_login)
+        self.storage.add_client(self.test_login)
+        self.storage.add_client(self.test_second_login)
         first_client_id = self.storage.get_client_id(self.test_login)
         second_client_id = self.storage.get_client_id(self.test_second_login)
         self.storage.add_client_to_contacts(first_client_id, second_client_id)
@@ -120,8 +120,8 @@ class TestDBStorageServer:
             self.storage.add_client_to_contacts('qwerty', 'asdfgh')
 
     def test__check_client_in_contacts__client_in_contacts__return_true(self):
-        self.storage.add_new_client(self.test_login)
-        self.storage.add_new_client(self.test_second_login)
+        self.storage.add_client(self.test_login)
+        self.storage.add_client(self.test_second_login)
         first_client_id = self.storage.get_client_id(self.test_login)
         second_client_id = self.storage.get_client_id(self.test_second_login)
         self.storage.add_client_to_contacts(first_client_id, second_client_id)
@@ -129,8 +129,8 @@ class TestDBStorageServer:
         assert self.storage.check_client_in_contacts(first_client_id, second_client_id) is True
 
     def test__check_client_in_contacts__client_not_in_contacts__return_false(self):
-        self.storage.add_new_client(self.test_login)
-        self.storage.add_new_client(self.test_second_login)
+        self.storage.add_client(self.test_login)
+        self.storage.add_client(self.test_second_login)
         first_client_id = self.storage.get_client_id(self.test_login)
         second_client_id = self.storage.get_client_id(self.test_second_login)
 

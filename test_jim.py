@@ -69,16 +69,16 @@ class TestJimRequest:
 def test__jim_request_from_bytes__incorrect_input__raises():
     baddata = b'\xde\xad\xbe\xef'
     with pytest.raises(UnicodeDecodeError):
-        jim_request_from_bytes(baddata)
+        request_from_bytes(baddata)
 
 
 def test__jim_request_from_bytes__correct_input__correct_empty_object_created():
-    test = jim_request_from_bytes(b'{}')
+    test = request_from_bytes(b'{}')
     assert len(test.datadict) == 0
 
 
 def test__jim_request_from_bytes__correct_input__correct_not_empty_object_created():
-    test = jim_request_from_bytes(b'{"key":"val"}')
+    test = request_from_bytes(b'{"key":"val"}')
     assert test.datadict['key'] == 'val'
 
 
@@ -115,7 +115,7 @@ class TestJimResponse:
 def test__jim_response_from_bytes__incorrect_input__raises():
     bad_data = b'\xde\xad\xbe\xef'
     with pytest.raises(UnicodeDecodeError):
-        jim_response_from_bytes(bad_data)
+        response_from_bytes(bad_data)
 
 
 def test__jim_response_from_bytes__input_is_not_response__raises():
@@ -124,7 +124,7 @@ def test__jim_response_from_bytes__input_is_not_response__raises():
     test.set_field('test_key_2', 'test_val_2')
     byte_data = test.to_bytes()
     with pytest.raises(KeyError):
-        jim_response_from_bytes(byte_data)
+        response_from_bytes(byte_data)
 
 
 def test__jim_response_from_bytes__all_fields_but_response_set__raises():
@@ -133,7 +133,7 @@ def test__jim_response_from_bytes__all_fields_but_response_set__raises():
     test.error = 'test_error'
     byte_data = test.to_bytes()
     with pytest.raises(KeyError):
-        jim_response_from_bytes(byte_data)
+        response_from_bytes(byte_data)
 
 
 def test__jim_response_from_bytes__all_fields_set__correct_result():
@@ -142,5 +142,5 @@ def test__jim_response_from_bytes__all_fields_set__correct_result():
     test.alert = 'test_alert'
     test.error = 'test_error'
     byte_data = test.to_bytes()
-    actual = jim_response_from_bytes(byte_data)
+    actual = response_from_bytes(byte_data)
     assert test == actual
