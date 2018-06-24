@@ -138,6 +138,21 @@ class Client(metaclass=ClientVerifierMeta):
         contacts = self.storage.get_contacts()
         return contacts if contacts else []
 
+    def send_message_to_contact(self, login: str, message: str):
+        if not message:
+            raise RuntimeError('Message cannot be empty')
+        request = jim.message_request(self.username, login, message)
+        self.send_message_to_server(request)
+        response = self.receive_message_from_server()
+        if response.response != 200:
+            raise RuntimeError(f'Send message: expected response 200, '
+                               f'received: {response.response}, error: {response.datadict["error"]}')
+        self.storage.add_message(login, message)
+
+    def get_messages(self, login: str) -> list:
+        messages = self.storage.get_messages(login)
+        return [{'text': item[0], 'incoming': bool(item[1])} for item in messages]
+
 
 class Menu:
     def __init__(self, commands: list):

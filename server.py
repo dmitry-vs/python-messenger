@@ -145,6 +145,12 @@ class Server(metaclass=ServerVerifierMeta):
                                 responses.append(contact_resp)
 
                                 print(contact_resp)  #
+                        elif request.action == 'msg':
+                            resp = JimResponse()
+                            resp.response = 200
+                            responses.append(resp)
+
+                            print(resp)  #
                         else:
                             raise RuntimeError(f'Unknown JIM action: {request.action}')
                         for resp in responses:

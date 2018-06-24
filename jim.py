@@ -116,3 +116,14 @@ def delete_contact_request(login: str) -> JimRequest:
     message.set_field('user_id', login)
     message.set_time()
     return message
+
+
+def message_request(login_from: str, login_to: str, text: str) -> JimRequest:
+    message = JimRequest()
+    message.set_field('action', 'msg')
+    message.set_time()
+    message.set_field('to', login_to)
+    message.set_field('from', login_from)
+    message.set_field('encoding', 'utf-8')
+    message.set_field('message', text)
+    return message

@@ -31,6 +31,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.pushButton_add_contact.clicked.connect(self.add_contact_click)
         self.ui.pushButton_delete_contact.clicked.connect(self.delete_contact_click)
         self.ui.pushButton_send.clicked.connect(self.send_message_click)
+        self.ui.listWidget_contacts.itemDoubleClicked.connect(self.contact_double_clicked)
 
     def print_info(self, info: str):
         current_text = self.ui.textBrowser_service_info.toPlainText()
@@ -87,13 +88,41 @@ class MainWindow(QtWidgets.QMainWindow):
             self.client.delete_contact_on_server(login)
             self.client.update_contacts_from_server()
             self.update_contacts_widget()
+            self.clear_messages_widget()
         except BaseException as e:
             self.print_info(f'Error: {str(e)}')
 
     def send_message_click(self):
-        # call client send message
-        # print messages history in widget
-        pass
+        try:
+            login = self.ui.listWidget_contacts.selectedItems()[0].text()
+            text = self.ui.textEdit_input.toPlainText()
+            self.client.send_message_to_contact(login, text)
+            self.update_messages_widget(login)
+        except:
+            self.print_info(traceback.format_exc())
+
+    def format_message(self, login: str, message: dict) -> str:
+        """Format message dict returned by Client.get_messages()"""
+        login_from = login if message['incoming'] else self.username
+        login_to = self.username if message['incoming'] else login
+        return f'{login_from} -> {login_to}:\n{message["text"]}'
+
+    def update_messages_widget(self, login: str):
+        current_messages = self.client.get_messages(login)
+        messages_widget_text = ''
+        for message in current_messages:
+            msg_formatted = self.format_message(login, message)
+            messages_widget_text = msg_formatted if not messages_widget_text else \
+                f'{messages_widget_text}\n{msg_formatted}'
+        self.ui.textBrowser_messages.setText(messages_widget_text)
+        self.ui.textBrowser_messages.moveCursor(QtGui.QTextCursor.End)
+
+    def contact_double_clicked(self):
+        login = self.ui.listWidget_contacts.selectedItems()[0].text()
+        self.update_messages_widget(login)
+
+    def clear_messages_widget(self):
+        self.ui.textBrowser_messages.clear()
 
 
 if __name__ == '__main__':

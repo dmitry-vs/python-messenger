@@ -124,7 +124,7 @@ class DBStorageClient(DBStorage):
             `contact_id`	INTEGER NOT NULL,
             `incoming`	INTEGER NOT NULL,
             `text`	TEXT NOT NULL,
-            FOREIGN KEY(`contact_id`) REFERENCES `Contacts`(`id`)
+            FOREIGN KEY(`contact_id`) REFERENCES `Contacts`(`id`) ON DELETE CASCADE
         );
         ''')
         self._conn.commit()
@@ -140,9 +140,20 @@ class DBStorageClient(DBStorage):
         except IndexError:
             return None
 
-    def add_message(self, contact_id: int, incoming: bool, text: str):
+    def add_message(self, login: str, text: str, incoming: bool=False):
+        contact_id = self.get_contact_id(login)
         self._cursor.execute('INSERT INTO `Messages` VALUES (NULL, ?, ?, ?)', (contact_id, int(incoming), text))
         self._conn.commit()
+
+    def get_messages(self, login: str):
+        contact_id = self.get_contact_id(login)
+        self.cursor.execute('''
+        SELECT `text`, `incoming` 
+        FROM `Messages` 
+        WHERE `contact_id` == ?
+        ORDER BY `id`
+        ''', (contact_id,))
+        return self._cursor.fetchall()
 
     def get_contacts(self) -> list:
         self._cursor.execute('SELECT `login` FROM `Contacts`')
