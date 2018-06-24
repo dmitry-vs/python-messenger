@@ -4,6 +4,8 @@ import sys
 import select
 import logging
 import inspect
+import os
+from time import sleep
 
 import helpers
 from jim import request_from_bytes, JimResponse
@@ -146,6 +148,7 @@ class Server(metaclass=ServerVerifierMeta):
                         else:
                             raise RuntimeError(f'Unknown JIM action: {request.action}')
                         for resp in responses:
+                            sleep(0.001)  # this magic solves problem with multiple jim messages in one socket message!!
                             client_socket.send(resp.to_bytes())
                     except BaseException as e:
                         print(f'Client disconnected: {client_socket.getpeername()}, {e}')
@@ -161,7 +164,7 @@ if __name__ == '__main__':
     log.info('Server started')
     try:
         args = parse_commandline_args(sys.argv[1:])
-        server = Server(':memory:')
+        server = Server(os.path.join(helpers.get_this_script_full_dir(), 'server.sqlite'))
         server.set_settings(args.listen_address, args.listen_port)
         server.mainloop()
     except Exception as e:

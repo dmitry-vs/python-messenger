@@ -4,6 +4,7 @@ import argparse
 import logging
 import inspect
 import traceback
+import os
 
 import helpers
 import jim
@@ -46,15 +47,19 @@ class ClientVerifierMeta(type):
 
 
 class Client(metaclass=ClientVerifierMeta):
-    supported_commands = ['get_contacts', 'add_contact', 'delete_contact', 'send_message']
-
-    def __init__(self, username, storage):
+    def __init__(self, username, storage_file):
         self.__username = username
         self.__socket = socket(AF_INET, SOCK_STREAM)
-        self.__storage = DBStorageClient(storage)
+        self.__storage = DBStorageClient(storage_file)
 
     def connect(self, server_ip: str, server_port: int):
         self.__socket.connect((server_ip, server_port))
+        request = jim.presence_request(self.__username)
+        self.send_message_to_server(request)
+        response = self.receive_message_from_server()
+        if response.response != 200:
+            raise RuntimeError(f'Presence: expected 200, '
+                               f'received {response.response}, error: {response.datadict["error"]}')
 
     def __del__(self):
         self.__socket.close()
@@ -86,59 +91,57 @@ class Client(metaclass=ClientVerifierMeta):
 
     def receive_message_from_server(self) -> jim.JimResponse:
         received_data = self.receive_data()
+
+        log.debug(received_data)
+
         return jim.response_from_bytes(received_data)
 
-    def run_command(self, command: str):
-        if command == 'get_contacts':
-            request = jim.get_contacts_request()
-            self.send_message_to_server(request)
-            response = self.receive_message_from_server()
-            print(request, response)  #
-            if response.response != 202:
-                raise RuntimeError(f'Get contacts: expected 202, '
-                                   f'received: {response.response}, error: {response.datadict["error"]}')
+    def update_contacts_from_server(self):
+        request = jim.get_contacts_request()
+        self.send_message_to_server(request)
+        response = self.receive_message_from_server()
+        if response.response != 202:
+            raise RuntimeError(f'Get contacts: expected 202, '
+                               f'received: {response.response}, error: {response.datadict["error"]}')
+        contacts_server = []
+        for _ in range(0, response.datadict['quantity']):
+            contact_message = self.receive_message_from_server()
+            if contact_message.datadict['action'] != 'contact_list':
+                raise RuntimeError(f'Get contacts: expected action "contact_list", '
+                                   f'received: {contact_message.datadict["action"]}')
+            if contact_message.datadict['user_id'] not in contacts_server:
+                contacts_server.append(contact_message.datadict['user_id'])
 
-            contacts_server = []
-            for _ in range(0, response.datadict['quantity']):
-                contact_message = self.receive_message_from_server()
-                print(contact_message)  #
-                if contact_message.datadict['action'] != 'contact_list':
-                    raise RuntimeError(f'Get contacts: expected action "contact_list", '
-                                       f'received: {contact_message.datadict["action"]}')
-                if contact_message.datadict['user_id'] not in contacts_server:
-                    contacts_server.append(contact_message.datadict['user_id'])
+        self.storage.update_contacts(contacts_server)
 
-            self.storage.update_contacts(contacts_server)
-        elif command == 'add_contact':
-            contact_login = input('Print login of user to add: >')
-            if not contact_login:
-                raise RuntimeError('Login cannot be empty')
-            request = jim.add_contact_request(contact_login)
-            self.send_message_to_server(request)
-            response = self.receive_message_from_server()
-            print(request, response)  #
-            if response.response != 200:
-                raise RuntimeError(f'Add contact: expected response 200, '
-                                   f'received: {response.response}, error: {response.datadict["error"]}')
-        elif command == 'delete_contact':
-            contact_login = input('Print login of user to delete: >')
-            if not contact_login:
-                raise RuntimeError('Login cannot be empty')
-            request = jim.delete_contact_request(contact_login)
-            self.send_message_to_server(request)
-            response = self.receive_message_from_server()
-            print(request, response)  #
-            if response.response != 200:
-                raise RuntimeError(f'Delete contact: expected response 200, '
-                                   f'received: {response.response}, error: {response.datadict["error"]}')
-        elif command == 'send_message':
-            for index, contact in enumerate(self.storage.get_contacts()):
-                print(f'{index + 1}. {contact}')
+    def add_contact_on_server(self, login: str):
+        if not login:
+            raise RuntimeError('Login cannot be empty')
+        request = jim.add_contact_request(login)
+        self.send_message_to_server(request)
+        response = self.receive_message_from_server()
+        if response.response != 200:
+            raise RuntimeError(f'Add contact: expected response 200, '
+                               f'received: {response.response}, error: {response.datadict["error"]}')
+
+    def delete_contact_on_server(self, login: str):
+        if not login:
+            raise RuntimeError('Login cannot be empty')
+        request = jim.delete_contact_request(login)
+        self.send_message_to_server(request)
+        response = self.receive_message_from_server()
+        if response.response != 200:
+            raise RuntimeError(f'Delete contact: expected response 200, '
+                               f'received: {response.response}, error: {response.datadict["error"]}')
+
+    def get_current_contacts(self):
+        contacts = self.storage.get_contacts()
+        return contacts if contacts else []
 
 
 class Menu:
     def __init__(self, commands: list):
-        self._commands = {index + 1: item for index, item in enumerate(commands)}
+        self._commands = {i + 1: item for i, item in enumerate(commands)}
 
     def get_command(self, command_index):
         return self._commands[command_index]
@@ -152,28 +155,32 @@ class Menu:
 
 
 if __name__ == '__main__':
-    log.info('Client started')
     try:
         args = parse_commandline_args(sys.argv[1:])
-        client = Client(username=args.user_name, storage=':memory:')
+        storage_file = os.path.join(helpers.get_this_script_full_dir(), f'{args.user_name}.sqlite')
+        client = Client(username=args.user_name, storage_file=storage_file)
         print(f'Started client with username {client.username}')
+        print(f'Connecting to server {args.server_ip} on port {args.server_port}...')
         client.connect(args.server_ip, args.server_port)
-        presence_request = jim.presence_request(client.username)
-        print('Sending presence message to server...')
-        client.send_message_to_server(presence_request)
-        presence_response = client.receive_message_from_server()
-        print(presence_request, presence_response)  #
-        if presence_response.datadict['response'] != 200:
-            raise RuntimeError(f'Presence: expected 200, '
-                               f'received {presence_response.response}, error: {presence_response.datadict["error"]}')
-        print('Received 200, OK')
+        print('Connected')
 
+        # console command loop
+        supported_commands = ['get_contacts', 'add_contact', 'delete_contact', 'send_message']
+        main_menu = Menu(supported_commands)
         while True:
             user_choice = None
             try:
-                main_menu = Menu(Client.supported_commands)
                 user_choice = int(input(main_menu))
-                client.run_command(main_menu.get_command(user_choice))
+                command = main_menu.get_command(user_choice)
+                if command == 'get_contacts':
+                    client.update_contacts_from_server()
+                elif command == 'add_contact':
+                    client.add_contact_on_server(input('Print login of user to add: >'))
+                elif command == 'delete_contact':
+                    client.delete_contact_on_server(input('Print login of user to delete: >'))
+                elif command == 'send_message':
+                    for index, contact in enumerate(client.storage.get_contacts()):
+                        print(f'{index + 1}. {contact}')
             except KeyboardInterrupt:
                 exit(1)
             except:
