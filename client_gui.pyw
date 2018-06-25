@@ -94,7 +94,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def send_message_click(self):
         try:
-            login = self.ui.listWidget_contacts.selectedItems()[0].text()
+            selected_contacts = self.ui.listWidget_contacts.selectedItems()
+            if not selected_contacts:
+                self.print_info('Contact not selected')
+                return
+            login = selected_contacts[0].text()
             text = self.ui.textEdit_input.toPlainText()
             self.client.send_message_to_contact(login, text)
             self.update_messages_widget(login)

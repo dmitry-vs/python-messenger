@@ -73,7 +73,7 @@ class Server(metaclass=ServerVerifierMeta):
             else:
                 print(f'Client connected: {str(addr)}')
                 clients.append(conn)
-            finally:  # check for input data, if found - translate it to all clients
+            finally:  # check for incoming requests
                 readable, writable, erroneous = [], [], []
                 try:
                     readable, writable, erroneous = select.select(clients, clients, clients, 0)
@@ -88,12 +88,16 @@ class Server(metaclass=ServerVerifierMeta):
                         responses = []
                         if request.action == 'presence':
                             client_login = request.datadict['user']['account_name']
-                            client_time = request.datadict['time']
-                            client_ip = client_socket.getpeername()[0]
-                            logins[client_socket] = client_login
-                            server.storage.update_client(client_login, client_time, client_ip)
                             resp = JimResponse()
-                            resp.response = 200
+                            if client_login in logins.values():
+                                resp.response = 400
+                                resp.set_field('error', 'Client already online')
+                            else:
+                                client_time = request.datadict['time']
+                                client_ip = client_socket.getpeername()[0]
+                                logins[client_socket] = client_login
+                                server.storage.update_client(client_login, client_time, client_ip)
+                                resp.response = 200
                             responses.append(resp)
 
                             print(resp)  #
@@ -160,7 +164,10 @@ class Server(metaclass=ServerVerifierMeta):
                         print(f'Client disconnected: {client_socket.getpeername()}, {e}')
                         client_socket.close()
                         clients.remove(client_socket)
-                        del logins[client_socket]
+                        try:
+                            del logins[client_socket]
+                        except:
+                            pass
                         if client_socket in writable:
                             writable.remove(client_socket)
 

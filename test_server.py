@@ -40,8 +40,8 @@ def test_unknown_args__raises():
 
 class TestServer:
     def test__init__no_errors(self):
-        Server()
+        Server(':memory:')
 
     def test__set_settings__correct_settings_no_errors(self):
-        test_server = Server()
+        test_server = Server(':memory:')
         test_server.set_settings('', int(test_port), clients_limit=1000, timeout=1)
