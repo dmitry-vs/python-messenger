@@ -52,15 +52,6 @@ class Client(metaclass=ClientVerifierMeta):
         self.__socket = socket(AF_INET, SOCK_STREAM)
         self.__storage = DBStorageClient(storage_file)
 
-    def connect(self, server_ip: str, server_port: int):
-        self.__socket.connect((server_ip, server_port))
-        request = jim.presence_request(self.__username)
-        self.send_message_to_server(request)
-        response = self.receive_message_from_server()
-        if response.response != 200:
-            raise RuntimeError(f'Presence: expected 200, '
-                               f'received {response.response}, error: {response.datadict["error"]}')
-
     def __del__(self):
         self.__socket.close()
 
@@ -95,6 +86,18 @@ class Client(metaclass=ClientVerifierMeta):
         log.debug(received_data)
 
         return jim.response_from_bytes(received_data)
+
+    def check_connection(self):
+        request = jim.presence_request(self.__username)
+        self.send_message_to_server(request)
+        response = self.receive_message_from_server()
+        if response.response != 200:
+            raise RuntimeError(f'Presence: expected 200, '
+                               f'received {response.response}, error: {response.datadict["error"]}')
+
+    def connect(self, server_ip: str, server_port: int):
+        self.__socket.connect((server_ip, server_port))
+        self.check_connection()
 
     def update_contacts_from_server(self):
         request = jim.get_contacts_request()

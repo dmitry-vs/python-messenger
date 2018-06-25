@@ -22,7 +22,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.label_server_port_val.setText('')
         self.client = None
         self.username = None
-        self.storage_file = None
         self.server_ip = None
         self.server_port = None
 
@@ -39,7 +38,22 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.textBrowser_service_info.setText(new_text)
         self.ui.textBrowser_service_info.moveCursor(QtGui.QTextCursor.End)
 
+    def clear_state(self):
+        self.client = None
+        self.username = None
+        self.server_ip = None
+        self.server_port = None
+
     def connect_click(self):
+        # check already connected
+        if self.client:
+            try:
+                self.client.check_connection()
+                self.print_info('Already connected')
+                return
+            except:  # connection lost, need to make new one
+                self.print_info(traceback.format_exc())
+
         # read input values
         username = self.ui.lineEdit_username.text()
         server_ip = self.ui.lineEdit_server_ip.text()
@@ -52,10 +66,10 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             server_port = int(server_port_str)
             self.username = username
-            self.storage_file = os.path.join(helpers.get_this_script_full_dir(), f'{self.username}.sqlite')
+            storage_file = os.path.join(helpers.get_this_script_full_dir(), f'{self.username}.sqlite')
             self.server_ip = server_ip
             self.server_port = server_port
-            self.client = Client(self.username, self.storage_file)
+            self.client = Client(self.username, storage_file)
             self.print_info(f'Connecting to server {self.server_ip} on port {str(self.server_port)}...')
             self.client.connect(self.server_ip, self.server_port)
             self.print_info('Connected')
@@ -66,6 +80,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.update_contacts_widget()
         except:
             self.print_info(traceback.format_exc())
+            self.clear_state()
 
     def update_contacts_widget(self):
         contacts = self.client.get_current_contacts()
@@ -100,8 +115,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 return
             login = selected_contacts[0].text()
             text = self.ui.textEdit_input.toPlainText()
+            if not text:
+                self.print_info('Message text cannot be empty')
+                return
             self.client.send_message_to_contact(login, text)
             self.update_messages_widget(login)
+            self.ui.textEdit_input.clear()
         except:
             self.print_info(traceback.format_exc())
 

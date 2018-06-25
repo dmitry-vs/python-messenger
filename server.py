@@ -17,7 +17,8 @@ log = logging.getLogger(helpers.SERVER_LOGGER_NAME)
 
 def parse_commandline_args(cmd_args):
     parser = argparse.ArgumentParser()
-    parser.add_argument('-a', dest='listen_address', type=str, default='', help='ip-address to listen on, default empty')
+    parser.add_argument('-a', dest='listen_address', type=str, default='',
+                        help='ip-address to listen on, default empty')
     parser.add_argument('-p', dest='listen_port', type=int, default=helpers.DEFAULT_SERVER_PORT,
                         help=f'tcp port to listen on, default {str(helpers.DEFAULT_SERVER_PORT)}')
     return parser.parse_args(cmd_args)
@@ -88,16 +89,20 @@ class Server(metaclass=ServerVerifierMeta):
                         responses = []
                         if request.action == 'presence':
                             client_login = request.datadict['user']['account_name']
+                            client_time = request.datadict['time']
+                            client_ip = client_socket.getpeername()[0]
                             resp = JimResponse()
-                            if client_login in logins.values():
-                                resp.response = 400
-                                resp.set_field('error', 'Client already online')
-                            else:
-                                client_time = request.datadict['time']
-                                client_ip = client_socket.getpeername()[0]
+                            if client_login not in logins.values():  # new client - ok
                                 logins[client_socket] = client_login
                                 server.storage.update_client(client_login, client_time, client_ip)
                                 resp.response = 200
+                            elif client_socket in logins.keys() and \
+                                    logins[client_socket] == client_login:  # existing client from same ip - ok
+                                server.storage.update_client(client_login, client_time, client_ip)
+                                resp.response = 200
+                            else:  # existing client from different ip - not correct
+                                resp.response = 400
+                                resp.set_field('error', 'Client already online')
                             responses.append(resp)
 
                             print(resp)  #
