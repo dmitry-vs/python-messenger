@@ -108,3 +108,5 @@ venv.bak/
 
 # TimedRotatingFileHandler logs
 messenger.server.log.*
+
+*.sqlite

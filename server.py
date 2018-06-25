@@ -4,9 +4,11 @@ import sys
 import select
 import logging
 import inspect
+import os
+from time import sleep
 
 import helpers
-from jim import jim_request_from_bytes, JimRequest, JimResponse
+from jim import request_from_bytes, JimResponse
 from storage import DBStorageServer
 import log_confing
 
@@ -15,7 +17,8 @@ log = logging.getLogger(helpers.SERVER_LOGGER_NAME)
 
 def parse_commandline_args(cmd_args):
     parser = argparse.ArgumentParser()
-    parser.add_argument('-a', dest='listen_address', type=str, default='', help='ip-address to listen on, default empty')
+    parser.add_argument('-a', dest='listen_address', type=str, default='',
+                        help='ip-address to listen on, default empty')
     parser.add_argument('-p', dest='listen_port', type=int, default=helpers.DEFAULT_SERVER_PORT,
                         help=f'tcp port to listen on, default {str(helpers.DEFAULT_SERVER_PORT)}')
     return parser.parse_args(cmd_args)
@@ -56,26 +59,9 @@ class Server(metaclass=ServerVerifierMeta):
     def __del__(self):
         self.__socket.close()
 
-    def update_client(self, login, last_connection_ip, last_connection_time, info=None):
-        client_id = self.__storage.get_client_id(login)
-        if not client_id:
-            self.__storage.add_new_client(login)
-            client_id = self.__storage.get_client_id(login)
-        self.__storage.update_client(client_id, last_connection_time, last_connection_ip, info)
-
-    def add_client_contact(self, client_login, contact_login):
-        client_id = self.__storage.get_client_id(client_login)
-        contact_id = self.__storage.get_client_id(contact_login)
-        self.__storage.add_client_to_contacts(client_id, contact_id)
-
-    def delete_client_contact(self, client_login, contact_login):
-        client_id = self.__storage.get_client_id(client_login)
-        contact_id = self.__storage.get_client_id(contact_login)
-        self.__storage.del_client_from_contacts(client_id, contact_id)
-
-    def get_client_contacts(self, client_login) -> list:
-        client_id = self.__storage.get_client_id(client_login)
-        return self.__storage.get_client_contacts(client_id)
+    @property
+    def storage(self):
+        return self.__storage
 
     def mainloop(self):
         clients = []
@@ -88,7 +74,7 @@ class Server(metaclass=ServerVerifierMeta):
             else:
                 print(f'Client connected: {str(addr)}')
                 clients.append(conn)
-            finally:  # check for input data, if found - translate it to all clients
+            finally:  # check for incoming requests
                 readable, writable, erroneous = [], [], []
                 try:
                     readable, writable, erroneous = select.select(clients, clients, clients, 0)
@@ -99,56 +85,94 @@ class Server(metaclass=ServerVerifierMeta):
                     try:
                         if client_socket not in writable:
                             continue
-                        request = jim_request_from_bytes(client_socket.recv(helpers.TCP_MSG_BUFFER_SIZE))
-                        request_action = request.datadict['action']
+                        request = request_from_bytes(client_socket.recv(helpers.TCP_MSG_BUFFER_SIZE))
                         responses = []
-                        if request_action == 'presence':
+                        if request.action == 'presence':
                             client_login = request.datadict['user']['account_name']
                             client_time = request.datadict['time']
                             client_ip = client_socket.getpeername()[0]
-                            logins[client_socket] = client_login
-                            server.update_client(client_login, client_ip, client_time)
-                            response = JimResponse()
-                            response.set_field('response', 200)
-                            responses.append(response)
-                        elif request_action == 'add_contact':
+                            resp = JimResponse()
+                            if client_login not in logins.values():  # new client - ok
+                                logins[client_socket] = client_login
+                                server.storage.update_client(client_login, client_time, client_ip)
+                                resp.response = 200
+                            elif client_socket in logins.keys() and \
+                                    logins[client_socket] == client_login:  # existing client from same ip - ok
+                                server.storage.update_client(client_login, client_time, client_ip)
+                                resp.response = 200
+                            else:  # existing client from different ip - not correct
+                                resp.response = 400
+                                resp.set_field('error', 'Client already online')
+                            responses.append(resp)
+
+                            print(resp)  #
+                        elif request.action == 'add_contact':
                             client_login = logins[client_socket]
                             contact_login = request.datadict['user_id']
-                            server.add_client_contact(client_login, contact_login)
                             resp = JimResponse()
-                            resp.set_field('response', 200)
+                            if not server.storage.check_client_exists(contact_login):
+                                resp.response = 400
+                                resp.set_field('error', f'No such client: {contact_login}')
+                            elif server.storage.check_client_in_contacts(client_login, contact_login):
+                                resp.response = 400
+                                resp.set_field('error', f'Client already in contacts: {contact_login}')
+                            else:
+                                server.storage.add_client_to_contacts(client_login, contact_login)
+                                resp.response = 200
                             responses.append(resp)
-                        elif request_action == 'del_contact':
+
+                            print(resp)  #
+                        elif request.action == 'del_contact':
                             client_login = logins[client_socket]
                             contact_login = request.datadict['user_id']
-                            server.delete_client_contact(client_login, contact_login)
                             resp = JimResponse()
-                            resp.set_field('response', 200)
+                            if not server.storage.check_client_exists(contact_login):
+                                resp.response = 400
+                                resp.set_field('error', f'No such client: {contact_login}')
+                            elif not server.storage.check_client_in_contacts(client_login, contact_login):
+                                resp.response = 400
+                                resp.set_field('error', f'Client not in contacts: {contact_login}')
+                            else:
+                                server.storage.del_client_from_contacts(client_login, contact_login)
+                                resp.response = 200
                             responses.append(resp)
-                        elif request_action == 'get_contacts':
+
+                            print(resp)  #
+                        elif request.action == 'get_contacts':
                             client_login = logins[client_socket]
-                            client_contacts = server.get_client_contacts(client_login)
-                            if not client_contacts:
-                                client_contacts = []
+                            client_contacts = server.storage.get_client_contacts(client_login)
                             quantity_resp = JimResponse()
-                            quantity_resp.set_field('response', 202)
+                            quantity_resp.response = 202
                             quantity_resp.set_field('quantity', len(client_contacts))
                             responses.append(quantity_resp)
+
+                            print(quantity_resp)  #
                             for contact in client_contacts:
                                 contact_resp = JimResponse()
                                 contact_resp.set_field('action', 'contact_list')
                                 contact_resp.set_field('user_id', contact)
                                 responses.append(contact_resp)
+
+                                print(contact_resp)  #
+                        elif request.action == 'msg':
+                            resp = JimResponse()
+                            resp.response = 200
+                            responses.append(resp)
+
+                            print(resp)  #
                         else:
-                            raise RuntimeError(f'Unknown JIM action: {request_action}')
+                            raise RuntimeError(f'Unknown JIM action: {request.action}')
                         for resp in responses:
-                            print(resp)
+                            sleep(0.001)  # this magic solves problem with multiple jim messages in one socket message!!
                             client_socket.send(resp.to_bytes())
                     except BaseException as e:
                         print(f'Client disconnected: {client_socket.getpeername()}, {e}')
                         client_socket.close()
                         clients.remove(client_socket)
-                        del logins[client_socket]
+                        try:
+                            del logins[client_socket]
+                        except:
+                            pass
                         if client_socket in writable:
                             writable.remove(client_socket)
 
@@ -158,7 +182,7 @@ if __name__ == '__main__':
     log.info('Server started')
     try:
         args = parse_commandline_args(sys.argv[1:])
-        server = Server(':memory:')
+        server = Server(os.path.join(helpers.get_this_script_full_dir(), 'server.sqlite'))
         server.set_settings(args.listen_address, args.listen_port)
         server.mainloop()
     except Exception as e:

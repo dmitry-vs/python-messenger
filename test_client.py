@@ -1,8 +1,7 @@
 import pytest
-import uuid
 
 from client import parse_commandline_args, Client
-from helpers import DEFAULT_SERVER_IP, DEFAULT_SERVER_PORT, DEFAULT_CLIENT_LOGIN
+import helpers
 from jim import JimRequest
 
 
@@ -14,34 +13,34 @@ test_user = 'TestClientUserName'
 
 def test_none_args_set__correct_default_values():
     test = parse_commandline_args([])
-    assert test.server_ip == DEFAULT_SERVER_IP
-    assert test.server_port == DEFAULT_SERVER_PORT
-    assert test.user_name == DEFAULT_CLIENT_LOGIN
+    assert test.server_ip == helpers.DEFAULT_SERVER_IP
+    assert test.server_port == helpers.DEFAULT_SERVER_PORT
+    assert test.user_name == helpers.DEFAULT_CLIENT_LOGIN
 
 
 def test_sever_set__correct_server_others_default():
     test = parse_commandline_args(['-s', test_ip])
     assert test.server_ip == test_ip
-    assert test.server_port == DEFAULT_SERVER_PORT
-    assert test.user_name == DEFAULT_CLIENT_LOGIN
+    assert test.server_port == helpers.DEFAULT_SERVER_PORT
+    assert test.user_name == helpers.DEFAULT_CLIENT_LOGIN
 
 
 def test_port_set__correct_port_others_default():
     test = parse_commandline_args(['-p', test_port])
-    assert test.server_ip == DEFAULT_SERVER_IP
+    assert test.server_ip == helpers.DEFAULT_SERVER_IP
     assert test.server_port == int(test_port)
-    assert test.user_name == DEFAULT_CLIENT_LOGIN
+    assert test.user_name == helpers.DEFAULT_CLIENT_LOGIN
 
 
 def test_user_name_set__correct_value_others_default():
     test = parse_commandline_args(['-u', test_user])
-    assert test.server_ip == DEFAULT_SERVER_IP
-    assert test.server_port == DEFAULT_SERVER_PORT
+    assert test.server_ip == helpers.DEFAULT_SERVER_IP
+    assert test.server_port == helpers.DEFAULT_SERVER_PORT
     assert test.user_name == test_user
 
 
 class TestClient:
-    test_username = uuid.uuid4().hex[:8]
+    test_username = helpers.DEFAULT_CLIENT_LOGIN
 
     @staticmethod
     def socket_send_mock(self, data):
@@ -52,10 +51,10 @@ class TestClient:
         return b'\xff' * size
 
     def setup(self):
-        self.test_client = Client(self.test_username)
+        self.test_client = Client(self.test_username, ':memory:')
 
     def test__init_and_del__do_not_raise(self):
-        Client(self.test_username)
+        Client(self.test_username, ':memory:')
 
     def test__send_data__test_data_not_empty__return_data_len(self, monkeypatch):
         test_data = b'test_data'

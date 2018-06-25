@@ -29,12 +29,16 @@ class TestDBStorageServer:
         actual = self.storage.get_client_id(self.test_login)
         assert actual == 1
 
-    def test__get_client_id__no_such_client__return_none(self):
-        assert self.storage.get_client_id(self.test_login) is None
+    def test__get_client_id__no_such_client__raises(self):
+        with pytest.raises(IndexError):
+            self.storage.get_client_id(self.test_login)
+        # assert self.storage.get_client_id(self.test_login) is None
 
     def test__get_client_id___input_none_or_empty__return_none(self):
-        assert self.storage.get_client_id(None) is None
-        assert self.storage.get_client_id('') is None
+        with pytest.raises(IndexError):
+            self.storage.get_client_id(None)
+        with pytest.raises(IndexError):
+            self.storage.get_client_id('')
 
     def test__get_client_id__input_collection__raises(self):
         with pytest.raises(sqlite3.Error):
@@ -43,41 +47,41 @@ class TestDBStorageServer:
             self.storage.get_client_id({})
 
     def test__add_new_client__correct_input__can_find_client_by_login(self):
-        self.storage.add_new_client(self.test_login)
+        self.storage.add_client(self.test_login)
         assert self.storage.get_client_id(self.test_login) == 1
 
     def test__add_new_client__already_exists__raises(self):
         with pytest.raises(sqlite3.Error):
-            self.storage.add_new_client(self.test_login)
-            self.storage.add_new_client(self.test_login)
+            self.storage.add_client(self.test_login)
+            self.storage.add_client(self.test_login)
 
     def test__add_new_client__login_none_or_empty__raises(self):
         with pytest.raises(ValueError):
-            self.storage.add_new_client(None)
+            self.storage.add_client(None)
         with pytest.raises(ValueError):
-            self.storage.add_new_client('')
+            self.storage.add_client('')
 
     def test__add_new_client__login_not_str__raises(self):
         with pytest.raises(sqlite3.Error):
-            self.storage.add_new_client([1, 2])
+            self.storage.add_client([1, 2])
         with pytest.raises(ValueError):
-            self.storage.add_new_client({})
+            self.storage.add_client({})
 
     def test__update_client__client_exists__correct_parameters_in_table(self):
-        self.storage.add_new_client(self.test_login)
+        self.storage.add_client(self.test_login)
         client_id = self.storage.get_client_id(self.test_login)
 
-        self.storage.update_client(client_id, self.test_time, self.test_ip, self.test_info)
+        self.storage.update_client(self.test_login, self.test_time, self.test_ip, self.test_info)
         self.cursor.execute('SELECT login, info, last_connect_time, last_connect_ip FROM Clients WHERE id == ?',
                             (client_id,))
         actual_values = self.cursor.fetchall()
         assert actual_values[0] == (self.test_login, self.test_info, self.test_time, self.test_ip)
 
     def test__update_client__info_is_none__correct_parameters_in_table(self):
-        self.storage.add_new_client(self.test_login)
+        self.storage.add_client(self.test_login)
         client_id = self.storage.get_client_id(self.test_login)
 
-        self.storage.update_client(client_id, self.test_time, self.test_ip)
+        self.storage.update_client(self.test_login, self.test_time, self.test_ip)
 
         self.cursor.execute('SELECT login, info, last_connect_time, last_connect_ip FROM Clients WHERE id == ?',
                             (client_id,))
@@ -85,60 +89,52 @@ class TestDBStorageServer:
         assert actual_values[0] == (self.test_login, None, self.test_time, self.test_ip)
 
     def test__add_client_to_contacts__client_not_in_contacts__client_added(self):
-        self.storage.add_new_client(self.test_login)
-        self.storage.add_new_client(self.test_second_login)
+        self.storage.add_client(self.test_login)
+        self.storage.add_client(self.test_second_login)
         first_client_id = self.storage.get_client_id(self.test_login)
         second_client_id = self.storage.get_client_id(self.test_second_login)
 
-        self.storage.add_client_to_contacts(first_client_id, second_client_id)
+        self.storage.add_client_to_contacts(self.test_login, self.test_second_login)
 
         self.cursor.execute('SELECT COUNT() FROM `ClientContacts` WHERE `owner_id` == ? AND `contact_id` == ?;',
                             (first_client_id, second_client_id))
         assert self.cursor.fetchall()[0][0] == 1
 
     def test__add_client_to_contacts_clients_add_each_other__no_errors(self):
-        self.storage.add_new_client(self.test_login)
-        self.storage.add_new_client(self.test_second_login)
-        first_client_id = self.storage.get_client_id(self.test_login)
-        second_client_id = self.storage.get_client_id(self.test_second_login)
-
-        self.storage.add_client_to_contacts(first_client_id, second_client_id)
-        self.storage.add_client_to_contacts(second_client_id, first_client_id)
+        self.storage.add_client(self.test_login)
+        self.storage.add_client(self.test_second_login)
+        self.storage.add_client_to_contacts(self.test_login, self.test_second_login)
+        self.storage.add_client_to_contacts(self.test_second_login, self.test_login)
 
     def test__add_client_to_contacts__client_already_in_contacts__raises(self):
-        self.storage.add_new_client(self.test_login)
-        self.storage.add_new_client(self.test_second_login)
-        first_client_id = self.storage.get_client_id(self.test_login)
-        second_client_id = self.storage.get_client_id(self.test_second_login)
-        self.storage.add_client_to_contacts(first_client_id, second_client_id)
-
+        self.storage.add_client(self.test_login)
+        self.storage.add_client(self.test_second_login)
+        self.storage.add_client_to_contacts(self.test_login, self.test_second_login)
         with pytest.raises(sqlite3.Error):
-            self.storage.add_client_to_contacts(first_client_id, second_client_id)
+            self.storage.add_client_to_contacts(self.test_login, self.test_second_login)
 
     def test__add_client_to_contacts__incorrect_input__raises(self):
-        with pytest.raises(sqlite3.Error):
-            self.storage.add_client_to_contacts('qwerty', 'asdfgh')
+        with pytest.raises(IndexError):
+            self.storage.add_client_to_contacts(None, {})
+        with pytest.raises(sqlite3.InterfaceError):
+            self.storage.add_client_to_contacts({}, None)
 
     def test__check_client_in_contacts__client_in_contacts__return_true(self):
-        self.storage.add_new_client(self.test_login)
-        self.storage.add_new_client(self.test_second_login)
-        first_client_id = self.storage.get_client_id(self.test_login)
-        second_client_id = self.storage.get_client_id(self.test_second_login)
-        self.storage.add_client_to_contacts(first_client_id, second_client_id)
-
-        assert self.storage.check_client_in_contacts(first_client_id, second_client_id) is True
+        self.storage.add_client(self.test_login)
+        self.storage.add_client(self.test_second_login)
+        self.storage.add_client_to_contacts(self.test_login, self.test_second_login)
+        assert self.storage.check_client_in_contacts(self.test_login, self.test_second_login) is True
 
     def test__check_client_in_contacts__client_not_in_contacts__return_false(self):
-        self.storage.add_new_client(self.test_login)
-        self.storage.add_new_client(self.test_second_login)
-        first_client_id = self.storage.get_client_id(self.test_login)
-        second_client_id = self.storage.get_client_id(self.test_second_login)
+        self.storage.add_client(self.test_login)
+        self.storage.add_client(self.test_second_login)
+        assert self.storage.check_client_in_contacts(self.test_login, self.test_second_login) is False
 
-        assert self.storage.check_client_in_contacts(first_client_id, second_client_id) is False
-
-    def test__check_client_in_contacts__input_incorrect__return_false(self):
-        assert self.storage.check_client_in_contacts('qwerty', 'asdfgh') is False
-        assert self.storage.check_client_in_contacts(None, None) is False
+    def test__check_client_in_contacts__incorrect_input__raises(self):
+        with pytest.raises(IndexError):
+            self.storage.check_client_in_contacts('qwerty', 'asdfgh')
+        with pytest.raises(IndexError):
+            self.storage.check_client_in_contacts(None, None)
 
 
 class TestDBStorageClient:
@@ -186,9 +182,7 @@ class TestDBStorageClient:
 
     def test__add_new_message__input_ok_incoming__correct_row_added(self):
         self.storage.add_contact(self.test_login)
-
-        self.storage.add_message(1, True, self.test_message)
-
+        self.storage.add_message(self.test_login, self.test_message, True)
         self.cursor.execute('SELECT * FROM `Messages`')
         result = self.cursor.fetchall()
         assert len(result) == 1
@@ -196,9 +190,7 @@ class TestDBStorageClient:
 
     def test__add_new_message__input_ok_outcoming__correct_row_added(self):
         self.storage.add_contact(self.test_login)
-
-        self.storage.add_message(1, False, self.test_message)
-
+        self.storage.add_message(self.test_login, self.test_message)
         self.cursor.execute('SELECT * FROM `Messages`')
         result = self.cursor.fetchall()
         assert len(result) == 1
@@ -206,11 +198,12 @@ class TestDBStorageClient:
 
     def test__add_new_message__input_incorrect__raises(self):
         with pytest.raises(sqlite3.Error):
-            self.storage.add_message(None, True, self.test_message)
+            self.storage.add_message(None, self.test_message, True)
+
         self.storage.add_contact(self.test_login)
         with pytest.raises(TypeError):
-            self.storage.add_message(1, None, self.test_message)
+            self.storage.add_message(1, self.test_message, None)
         with pytest.raises(sqlite3.Error):
-            self.storage.add_message(1, True, None)
+            self.storage.add_message(1, None, True)
         with pytest.raises(sqlite3.Error):
-            self.storage.add_message(1, False, None)
+            self.storage.add_message(1, None, False)

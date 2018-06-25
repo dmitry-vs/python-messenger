@@ -61,24 +61,20 @@ class TestJimMessage:
             self.test.from_bytes(baddata)
 
 
-class TestJimRequest:
-    pass
-
-
 # tests for: jim_request_from_bytes
 def test__jim_request_from_bytes__incorrect_input__raises():
     baddata = b'\xde\xad\xbe\xef'
     with pytest.raises(UnicodeDecodeError):
-        jim_request_from_bytes(baddata)
+        request_from_bytes(baddata)
 
 
 def test__jim_request_from_bytes__correct_input__correct_empty_object_created():
-    test = jim_request_from_bytes(b'{}')
+    test = request_from_bytes(b'{}')
     assert len(test.datadict) == 0
 
 
 def test__jim_request_from_bytes__correct_input__correct_not_empty_object_created():
-    test = jim_request_from_bytes(b'{"key":"val"}')
+    test = request_from_bytes(b'{"key":"val"}')
     assert test.datadict['key'] == 'val'
 
 
@@ -90,21 +86,12 @@ class TestJimResponse:
     def test_getters_setters__object_is_correct(self):
         test = JimResponse()
         test.response = self.test_response
-        test.alert = self.test_alert
-        test.error = self.test_error
         assert test.response == self.test_response
-        assert test.alert == self.test_alert
-        assert test.error == self.test_error
-        test_datadict = test.datadict
-        assert test_datadict["response"] == self.test_response
-        assert test_datadict["alert"] == self.test_alert
-        assert test_datadict["error"] == self.test_error
+        assert test.datadict["response"] == self.test_response
 
     def test_tobytes_frombytes__result_the_same(self):
         test = JimResponse()
         test.response = self.test_response
-        test.alert = self.test_alert
-        test.error = self.test_error
         test_bytedata = test.to_bytes()
         test_from_bytes = JimResponse()
         test_from_bytes.from_bytes(test_bytedata)
@@ -115,32 +102,21 @@ class TestJimResponse:
 def test__jim_response_from_bytes__incorrect_input__raises():
     bad_data = b'\xde\xad\xbe\xef'
     with pytest.raises(UnicodeDecodeError):
-        jim_response_from_bytes(bad_data)
+        response_from_bytes(bad_data)
 
 
-def test__jim_response_from_bytes__input_is_not_response__raises():
+def test__jim_response_from_bytes__input_is_not_response__result_response_is_none():
     test = JimRequest()
     test.set_field('test_key_1', 'test_val_1')
     test.set_field('test_key_2', 'test_val_2')
     byte_data = test.to_bytes()
-    with pytest.raises(KeyError):
-        jim_response_from_bytes(byte_data)
+    test_from_bytes = response_from_bytes(byte_data)
+    assert test_from_bytes.response is None
 
 
-def test__jim_response_from_bytes__all_fields_but_response_set__raises():
-    test = JimResponse()
-    test.alert = 'test_alert'
-    test.error = 'test_error'
-    byte_data = test.to_bytes()
-    with pytest.raises(KeyError):
-        jim_response_from_bytes(byte_data)
-
-
-def test__jim_response_from_bytes__all_fields_set__correct_result():
+def test__jim_response_from_bytes__response_set__correct_result():
     test = JimResponse()
     test.response = 321
-    test.alert = 'test_alert'
-    test.error = 'test_error'
     byte_data = test.to_bytes()
-    actual = jim_response_from_bytes(byte_data)
+    actual = response_from_bytes(byte_data)
     assert test == actual
