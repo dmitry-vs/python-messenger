@@ -27,6 +27,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # connect slots
         self.ui.pushButton_connect.clicked.connect(self.connect_click)
+        self.ui.pushButton_disconnect.clicked.connect(self.disconnect_click)
         self.ui.pushButton_add_contact.clicked.connect(self.add_contact_click)
         self.ui.pushButton_delete_contact.clicked.connect(self.delete_contact_click)
         self.ui.pushButton_send.clicked.connect(self.send_message_click)
@@ -82,9 +83,27 @@ class MainWindow(QtWidgets.QMainWindow):
             self.print_info(traceback.format_exc())
             self.clear_state()
 
+    def clear_parameters_widgets(self):
+        self.ui.label_username_val.clear()
+        self.ui.label_server_ip_val.clear()
+        self.ui.label_server_port_val.clear()
+
+    def disconnect_click(self):
+        if not self.client:
+            self.print_info('Not connected')
+        else:
+            self.print_info('Disconnecting')
+        self.clear_state()
+        self.clear_parameters_widgets()
+        self.clear_messages_widget()
+        self.clear_contacts_widget()
+
+    def clear_contacts_widget(self):
+        self.ui.listWidget_contacts.clear()
+
     def update_contacts_widget(self):
         contacts = self.client.get_current_contacts()
-        self.ui.listWidget_contacts.clear()
+        self.clear_contacts_widget()
         for contact in contacts:
             self.ui.listWidget_contacts.addItem(QtWidgets.QListWidgetItem(contact))
 
