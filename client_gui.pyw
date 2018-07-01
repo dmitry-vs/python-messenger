@@ -17,15 +17,19 @@ log = logging.getLogger(helpers.CLIENT_LOGGER_NAME)
 class ClientMonitor(QObject):
     gotUserMessage = pyqtSignal(bytes)
 
-    def __init__(self, parent, client):
+    def __init__(self, parent):
         super().__init__()
         self.parent = parent
-        self.client = client
+        self._client = None
+
+    def set_client(self, value):
+        self._client = value
 
     def check_new_messages(self):
         while True:
-            msg = self.client.user_messages.get()
-            self.gotUserMessage.emit(msg.to_bytes())
+            if self._client:
+                msg = self._client.user_messages.get()
+                self.gotUserMessage.emit(msg.to_bytes())
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -51,6 +55,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.pushButton_send.clicked.connect(self.send_message_click)
         self.ui.listWidget_contacts.itemClicked.connect(self.contact_clicked)
 
+        # create monitor and thread
+        self.monitor = ClientMonitor(self)
+        self.thread = QThread()
+        self.monitor.moveToThread(self.thread)
+        self.monitor.gotUserMessage.connect(self.new_message_received)
+        self.thread.started.connect(self.monitor.check_new_messages)
+
     @pyqtSlot(bytes)
     def new_message_received(self, msg_bytes):
         msg = request_from_bytes(msg_bytes)
@@ -68,6 +79,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def clear_state(self):
         self.client = None
+        self.monitor.set_client(None)
         self.username = None
         self.server_ip = None
         self.server_port = None
@@ -107,14 +119,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.client.update_contacts_from_server()
             self.update_contacts_widget()
 
-            # create monitor
-            self.monitor = ClientMonitor(self, self.client)
-            self.monitor.gotUserMessage.connect(self.new_message_received)
-            self.thread = QThread()
-            self.monitor.moveToThread(self.thread)
-            self.thread.started.connect(self.monitor.check_new_messages)
+            self.monitor.set_client(self.client)
             self.thread.start()
-
         except:
             self.print_info(traceback.format_exc())
             self.clear_state()
