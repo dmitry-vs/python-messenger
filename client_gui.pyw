@@ -1,5 +1,6 @@
 import sys
 from PyQt5 import QtWidgets, QtGui
+from PyQt5.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 import os
 import traceback
 import logging
@@ -7,9 +8,24 @@ import logging
 import client_pyqt
 from client import Client
 import helpers
+from jim import request_from_bytes
 import log_confing
 
 log = logging.getLogger(helpers.CLIENT_LOGGER_NAME)
+
+
+class ClientMonitor(QObject):
+    gotUserMessage = pyqtSignal(bytes)
+
+    def __init__(self, parent, client):
+        super().__init__()
+        self.parent = parent
+        self.client = client
+
+    def check_new_messages(self):
+        while True:
+            msg = self.client.user_messages.get()
+            self.gotUserMessage.emit(msg.to_bytes())
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -24,6 +40,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.username = None
         self.server_ip = None
         self.server_port = None
+        self.monitor = None
+        self.thread = None
 
         # connect slots
         self.ui.pushButton_connect.clicked.connect(self.connect_click)
@@ -31,7 +49,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.pushButton_add_contact.clicked.connect(self.add_contact_click)
         self.ui.pushButton_delete_contact.clicked.connect(self.delete_contact_click)
         self.ui.pushButton_send.clicked.connect(self.send_message_click)
-        self.ui.listWidget_contacts.itemDoubleClicked.connect(self.contact_double_clicked)
+        self.ui.listWidget_contacts.itemClicked.connect(self.contact_clicked)
+
+    @pyqtSlot(bytes)
+    def new_message_received(self, msg_bytes):
+        msg = request_from_bytes(msg_bytes)
+        login = msg.datadict['from']
+        text = msg.datadict['message']
+        self.client.storage.add_message(login, text, True)
+        if login == self.get_current_contact():
+            self.update_messages_widget(login)
 
     def print_info(self, info: str):
         current_text = self.ui.textBrowser_service_info.toPlainText()
@@ -79,6 +106,15 @@ class MainWindow(QtWidgets.QMainWindow):
             self.ui.label_server_port_val.setText(str(self.server_port))
             self.client.update_contacts_from_server()
             self.update_contacts_widget()
+
+            # create monitor
+            self.monitor = ClientMonitor(self, self.client)
+            self.monitor.gotUserMessage.connect(self.new_message_received)
+            self.thread = QThread()
+            self.monitor.moveToThread(self.thread)
+            self.thread.started.connect(self.monitor.check_new_messages)
+            self.thread.start()
+
         except:
             self.print_info(traceback.format_exc())
             self.clear_state()
@@ -159,9 +195,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.textBrowser_messages.setText(messages_widget_text)
         self.ui.textBrowser_messages.moveCursor(QtGui.QTextCursor.End)
 
-    def contact_double_clicked(self):
-        login = self.ui.listWidget_contacts.selectedItems()[0].text()
+    def contact_clicked(self):
+        login = self.get_current_contact()
         self.update_messages_widget(login)
+
+    def get_current_contact(self):
+        selected_items = self.ui.listWidget_contacts.selectedItems()
+        return self.ui.listWidget_contacts.selectedItems()[0].text() if selected_items else None
 
     def clear_messages_widget(self):
         self.ui.textBrowser_messages.clear()

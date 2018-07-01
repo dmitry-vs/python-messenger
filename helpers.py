@@ -10,7 +10,7 @@ CLIENTS_COUNT_LIMIT = 100
 APP_NAME = 'messenger'
 SERVER_LOGGER_NAME = f'{APP_NAME}.server'
 CLIENT_LOGGER_NAME = f'{APP_NAME}.client'
-DEFAULT_CLIENT_LOGIN = 'TestClient'
+DEFAULT_CLIENT_LOGIN = 'TestUser'
 
 
 def get_this_script_full_dir():

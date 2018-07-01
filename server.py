@@ -155,8 +155,17 @@ class Server(metaclass=ServerVerifierMeta):
 
                                 print(contact_resp)  #
                         elif request.action == 'msg':
+                            target_client_login = request.datadict['to']
                             resp = JimResponse()
-                            resp.response = 200
+                            for key, val in logins.items():
+                                if val == target_client_login:
+                                    print(request)
+                                    key.send(request.to_bytes())
+                                    resp.response = 200
+                                    break
+                            else:
+                                resp.response = 400
+                                resp.set_field('error', f'Client not online: {target_client_login}')
                             responses.append(resp)
 
                             print(resp)  #
