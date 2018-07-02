@@ -60,6 +60,7 @@ class Server(metaclass=ServerVerifierMeta):
         self.__storage = None
         self.__need_terminate = False
         self.__worker_thread = None
+        self.__print_queue = Queue()
 
     def start(self):
         if self.__socket:
@@ -87,6 +88,10 @@ class Server(metaclass=ServerVerifierMeta):
         self.__storage = None
 
     @property
+    def print_queue(self):
+        return self.__print_queue
+
+    @property
     def storage(self):
         return self.__storage
 
@@ -102,7 +107,8 @@ class Server(metaclass=ServerVerifierMeta):
             except OSError:
                 pass  # timeout, do nothing
             else:
-                print(f'Client connected: {str(addr)}')
+                # print(f'Client connected: {str(addr)}')
+                self.__print_queue.put(f'Client connected: {str(addr)}')
                 clients.append(conn)
             finally:  # check for incoming requests
                 readable, writable, erroneous = [], [], []
@@ -116,6 +122,7 @@ class Server(metaclass=ServerVerifierMeta):
                         if client_socket not in writable:
                             continue
                         request = request_from_bytes(client_socket.recv(helpers.TCP_MSG_BUFFER_SIZE))
+                        self.__print_queue.put(str(request))
                         responses = []
                         if request.action == 'presence':
                             client_login = request.datadict['user']['account_name']
@@ -134,8 +141,7 @@ class Server(metaclass=ServerVerifierMeta):
                                 resp.response = 400
                                 resp.set_field('error', 'Client already online')
                             responses.append(resp)
-
-                            print(resp)  #
+                            self.__print_queue.put(str(resp))
                         elif request.action == 'add_contact':
                             client_login = logins[client_socket]
                             contact_login = request.datadict['user_id']
@@ -150,8 +156,7 @@ class Server(metaclass=ServerVerifierMeta):
                                 self.storage.add_client_to_contacts(client_login, contact_login)
                                 resp.response = 200
                             responses.append(resp)
-
-                            print(resp)  #
+                            self.__print_queue.put(str(resp))
                         elif request.action == 'del_contact':
                             client_login = logins[client_socket]
                             contact_login = request.datadict['user_id']
@@ -166,8 +171,7 @@ class Server(metaclass=ServerVerifierMeta):
                                 self.storage.del_client_from_contacts(client_login, contact_login)
                                 resp.response = 200
                             responses.append(resp)
-
-                            print(resp)  #
+                            self.__print_queue.put(str(resp))
                         elif request.action == 'get_contacts':
                             client_login = logins[client_socket]
                             client_contacts = self.storage.get_client_contacts(client_login)
@@ -175,21 +179,18 @@ class Server(metaclass=ServerVerifierMeta):
                             quantity_resp.response = 202
                             quantity_resp.set_field('quantity', len(client_contacts))
                             responses.append(quantity_resp)
-
-                            print(quantity_resp)  #
+                            self.__print_queue.put(str(quantity_resp))
                             for contact in client_contacts:
                                 contact_resp = JimResponse()
                                 contact_resp.set_field('action', 'contact_list')
                                 contact_resp.set_field('user_id', contact)
                                 responses.append(contact_resp)
-
-                                print(contact_resp)  #
+                                self.__print_queue.put(str(contact_resp))
                         elif request.action == 'msg':
                             target_client_login = request.datadict['to']
                             resp = JimResponse()
                             for key, val in logins.items():
                                 if val == target_client_login:
-                                    print(request)
                                     key.send(request.to_bytes())
                                     resp.response = 200
                                     break
@@ -197,15 +198,14 @@ class Server(metaclass=ServerVerifierMeta):
                                 resp.response = 400
                                 resp.set_field('error', f'Client not online: {target_client_login}')
                             responses.append(resp)
-
-                            print(resp)  #
+                            self.__print_queue.put(str(resp))
                         else:
                             raise RuntimeError(f'Unknown JIM action: {request.action}')
                         for resp in responses:
                             sleep(0.001)  # this magic solves problem with multiple jim messages in one socket message!!
                             client_socket.send(resp.to_bytes())
                     except BaseException as e:
-                        print(f'Client disconnected: {client_socket.getpeername()}, {e}')
+                        self.__print_queue.put(f'Client disconnected: {client_socket.getpeername()}, {e}')
                         client_socket.close()
                         clients.remove(client_socket)
                         try:
@@ -216,11 +216,21 @@ class Server(metaclass=ServerVerifierMeta):
                             writable.remove(client_socket)
 
 
+def check_new_print_data_thread_function(print_queue: Queue):
+    while True:
+        if print_queue:
+            print(print_queue.get())
+
+
 if __name__ == '__main__':
     try:
         args = parse_commandline_args(sys.argv[1:])
         storage_file = os.path.join(helpers.get_this_script_full_dir(), 'server.sqlite')
         server = Server(args.listen_address, args.listen_port, storage_file)
+        print_monitor = Thread(target=check_new_print_data_thread_function,
+                               args=(server.print_queue,))
+        print_monitor.daemon = True
+        print_monitor.start()
         supported_commands = ['start', 'stop']
         main_menu = helpers.Menu(supported_commands)
         while True:

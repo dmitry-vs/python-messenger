@@ -47,6 +47,17 @@ class DBStorageServer(DBStorage):
         self._cursor.execute('SELECT `id` FROM `Clients` WHERE `login` == ?', (login,))
         return self._cursor.fetchall()[0][0]
 
+    def get_clients(self):
+        self._cursor.execute(
+            '''
+            SELECT `login`, `last_connect_time`, `last_connect_ip`
+            FROM `Clients`
+            ORDER BY `last_connect_time` DESC
+            '''
+        )
+        result = self._cursor.fetchall()
+        return result if result else []
+
     def check_client_exists(self, login: str) -> bool:
         try:
             self.get_client_id(login)
