@@ -2,7 +2,6 @@ import sys
 from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 import os
-import traceback
 import logging
 
 import client_pyqt
@@ -13,6 +12,8 @@ import log_confing
 
 log = logging.getLogger(helpers.CLIENT_LOGGER_NAME)
 
+ERROR_FORMAT = 'Error: {}'
+
 
 class ClientMonitor(QObject):
     gotUserMessage = pyqtSignal(bytes)
@@ -20,15 +21,15 @@ class ClientMonitor(QObject):
     def __init__(self, parent):
         super().__init__()
         self.parent = parent
-        self._client = None
+        self._user_messages_queue = None
 
-    def set_client(self, value):
-        self._client = value
+    def set_queue(self, queue):
+        self._user_messages_queue = queue
 
     def check_new_messages(self):
         while True:
-            if self._client:
-                msg = self._client.user_messages.get()
+            if self._user_messages_queue:
+                msg = self._user_messages_queue.get()
                 self.gotUserMessage.emit(msg.to_bytes())
 
 
@@ -44,8 +45,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.username = None
         self.server_ip = None
         self.server_port = None
-        self.monitor = None
-        self.thread = None
 
         # connect slots
         self.ui.pushButton_connect.clicked.connect(self.connect_click)
@@ -78,8 +77,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.textBrowser_service_info.moveCursor(QtGui.QTextCursor.End)
 
     def clear_state(self):
+        self.monitor.set_queue(None)
+        self.client.close_client()
         self.client = None
-        self.monitor.set_client(None)
         self.username = None
         self.server_ip = None
         self.server_port = None
@@ -91,8 +91,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.client.check_connection()
                 self.print_info('Already connected')
                 return
-            except:  # connection lost, need to make new one
-                self.print_info(traceback.format_exc())
+            except BaseException as e:  # connection lost, need to make new one
+                self.print_info(ERROR_FORMAT.format(str(e)))
 
         # read input values
         username = self.ui.lineEdit_username.text()
@@ -102,7 +102,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.print_info('Error: user name, server ip and server port cannot be empty')
             return
 
-        # create client and connect to server, update contacts
+        # create client and connect to server, update contacts, start monitor
         try:
             server_port = int(server_port_str)
             self.username = username
@@ -118,11 +118,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.ui.label_server_port_val.setText(str(self.server_port))
             self.client.update_contacts_from_server()
             self.update_contacts_widget()
-
-            self.monitor.set_client(self.client)
+            self.monitor.set_queue(self.client.user_messages_queue)
             self.thread.start()
-        except:
-            self.print_info(traceback.format_exc())
+        except BaseException as e:
+            self.print_info(ERROR_FORMAT.format(str(e)))
             self.clear_state()
 
     def clear_parameters_widgets(self):
@@ -156,7 +155,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.client.update_contacts_from_server()
             self.update_contacts_widget()
         except BaseException as e:
-            self.print_info(f'Error: {str(e)}')
+            self.print_info(ERROR_FORMAT.format(str(e)))
 
     def delete_contact_click(self):
         try:
@@ -166,7 +165,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.update_contacts_widget()
             self.clear_messages_widget()
         except BaseException as e:
-            self.print_info(f'Error: {str(e)}')
+            self.print_info(ERROR_FORMAT.format(str(e)))
 
     def send_message_click(self):
         try:
@@ -182,8 +181,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.client.send_message_to_contact(login, text)
             self.update_messages_widget(login)
             self.ui.textEdit_input.clear()
-        except:
-            self.print_info(traceback.format_exc())
+        except BaseException as e:
+            self.print_info(ERROR_FORMAT.format(str(e)))
 
     def format_message(self, login: str, message: dict) -> str:
         """Format message dict returned by Client.get_messages()"""

@@ -3,7 +3,6 @@ from socket import socket, AF_INET, SOCK_STREAM
 import argparse
 import logging
 import inspect
-import traceback
 import os
 from threading import Thread
 from queue import Queue
@@ -57,12 +56,20 @@ class Client(metaclass=ClientVerifierMeta):
         self.__user_messages = Queue()
         self.__reader_thread = Thread(target=self.read_messages_thread_function)
         self.__reader_thread.daemon = True
+        self.__need_terminate = False
 
     def __del__(self):
+        self.close_client()
+
+    def close_client(self):
         self.__socket.close()
+        self.__need_terminate = True
+        self.__reader_thread.join()
 
     def read_messages_thread_function(self):
         while True:
+            if self.__need_terminate:
+                return
             try:
                 msg = self.receive_message_from_server()
                 if 'action' in msg.datadict.keys() and msg.datadict['action'] == 'msg':  # user message
@@ -73,7 +80,7 @@ class Client(metaclass=ClientVerifierMeta):
                 pass
 
     @property
-    def user_messages(self):
+    def user_messages_queue(self):
         return self.__user_messages
 
     @property
@@ -192,6 +199,14 @@ class Menu:
         return result
 
 
+def check_new_incoming_messages_thread_function(message_queue: Queue):
+        while True:
+            if message_queue:
+                msg = message_queue.get()
+                formatted_message = f"New message from {msg.datadict['from']}: {msg.datadict['message']}"
+                print(formatted_message)
+
+
 if __name__ == '__main__':
     try:
         args = parse_commandline_args(sys.argv[1:])
@@ -200,17 +215,23 @@ if __name__ == '__main__':
         print(f'Started client with username {client.username}')
         print(f'Connecting to server {args.server_ip} on port {args.server_port}...')
         client.connect(args.server_ip, args.server_port)
-        print('Connected')
+        print('Connected, updating contacts...')
+        client.update_contacts_from_server()
+        print('Starting incoming message monitor thread...')
+        incoming_monitor = Thread(target=check_new_incoming_messages_thread_function,
+                                  args=(client.user_messages_queue,))
+        incoming_monitor.daemon = True
+        incoming_monitor.start()
 
         # console command loop
-        supported_commands = ['get_contacts', 'add_contact', 'delete_contact', 'send_message']
+        supported_commands = ['show_contacts', 'add_contact', 'delete_contact', 'send_message']
         main_menu = Menu(supported_commands)
         while True:
             user_choice = None
             try:
                 user_choice = int(input(main_menu))
                 command = main_menu.get_command(user_choice)
-                if command == 'get_contacts':
+                if command == 'show_contacts':
                     client.update_contacts_from_server()
                     print(client.get_current_contacts())
                 elif command == 'add_contact':
@@ -222,13 +243,14 @@ if __name__ == '__main__':
                     if not current_contacts:
                         print('No contacts available')
                         continue
-                    client.send_message_to_contact(current_contacts[0], 'test message')
-                    print('OK')
+                    login = input('Print user login: >')
+                    text = input('Print text: >')
+                    client.send_message_to_contact(login, text)
             except KeyboardInterrupt:
                 exit(1)
-            except:
-                traceback.print_exc()
+            except BaseException as e:
+                print(f'Error: {str(e)}')
                 continue
-    except Exception as e:
+    except BaseException as e:
         log.critical(str(e))
         raise e
