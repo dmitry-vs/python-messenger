@@ -28,3 +28,18 @@ def log_func_call(logger):
             return ret
         return log_func_call_decorated
     return log_func_call_decorator
+
+
+class Menu:
+    def __init__(self, commands: list):
+        self._commands = {i + 1: item for i, item in enumerate(commands)}
+
+    def get_command(self, command_index):
+        return self._commands[command_index]
+
+    def __str__(self):
+        result = '\nChoose command:\n'
+        for key, val in self._commands.items():
+            result += f'{key}. {val}\n'
+        result += '>'
+        return result

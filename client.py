@@ -184,21 +184,6 @@ class Client(metaclass=ClientVerifierMeta):
         return [{'text': item[0], 'incoming': bool(item[1])} for item in messages]
 
 
-class Menu:
-    def __init__(self, commands: list):
-        self._commands = {i + 1: item for i, item in enumerate(commands)}
-
-    def get_command(self, command_index):
-        return self._commands[command_index]
-
-    def __str__(self):
-        result = '\nChoose command:\n'
-        for key, val in self._commands.items():
-            result += f'{key}. {val}\n'
-        result += '>'
-        return result
-
-
 def check_new_incoming_messages_thread_function(message_queue: Queue):
         while True:
             if message_queue:
@@ -225,7 +210,7 @@ if __name__ == '__main__':
 
         # console command loop
         supported_commands = ['show_contacts', 'add_contact', 'delete_contact', 'send_message']
-        main_menu = Menu(supported_commands)
+        main_menu = helpers.Menu(supported_commands)
         while True:
             user_choice = None
             try:
