@@ -3,8 +3,9 @@ from socket import socket, AF_INET, SOCK_STREAM
 import argparse
 import logging
 import inspect
-import traceback
 import os
+from threading import Thread
+from queue import Queue
 
 import helpers
 import jim
@@ -51,9 +52,36 @@ class Client(metaclass=ClientVerifierMeta):
         self.__username = username
         self.__socket = socket(AF_INET, SOCK_STREAM)
         self.__storage = DBStorageClient(storage_file)
+        self.__service_messages = Queue()
+        self.__user_messages = Queue()
+        self.__reader_thread = Thread(target=self.read_messages_thread_function)
+        self.__reader_thread.daemon = True
+        self.__need_terminate = False
 
     def __del__(self):
+        self.close_client()
+
+    def close_client(self):
         self.__socket.close()
+        self.__need_terminate = True
+        self.__reader_thread.join()
+
+    def read_messages_thread_function(self):
+        while True:
+            if self.__need_terminate:
+                return
+            try:
+                msg = self.receive_message_from_server()
+                if 'action' in msg.datadict.keys() and msg.datadict['action'] == 'msg':  # user message
+                    self.__user_messages.put(msg)
+                else:  # service message
+                    self.__service_messages.put(msg)
+            except OSError:
+                pass
+
+    @property
+    def user_messages_queue(self):
+        return self.__user_messages
 
     @property
     def username(self):
@@ -82,33 +110,32 @@ class Client(metaclass=ClientVerifierMeta):
 
     def receive_message_from_server(self) -> jim.JimResponse:
         received_data = self.receive_data()
-
-        log.debug(received_data)
-
         return jim.response_from_bytes(received_data)
 
     def check_connection(self):
         request = jim.presence_request(self.__username)
         self.send_message_to_server(request)
-        response = self.receive_message_from_server()
+        response = self.__service_messages.get()
         if response.response != 200:
             raise RuntimeError(f'Presence: expected 200, '
                                f'received {response.response}, error: {response.datadict["error"]}')
 
     def connect(self, server_ip: str, server_port: int):
         self.__socket.connect((server_ip, server_port))
+        self.__reader_thread.start()
         self.check_connection()
 
     def update_contacts_from_server(self):
         request = jim.get_contacts_request()
         self.send_message_to_server(request)
-        response = self.receive_message_from_server()
+        response = self.__service_messages.get()
         if response.response != 202:
             raise RuntimeError(f'Get contacts: expected 202, '
                                f'received: {response.response}, error: {response.datadict["error"]}')
         contacts_server = []
         for _ in range(0, response.datadict['quantity']):
-            contact_message = self.receive_message_from_server()
+            contact_message = self.__service_messages.get()
+
             if contact_message.datadict['action'] != 'contact_list':
                 raise RuntimeError(f'Get contacts: expected action "contact_list", '
                                    f'received: {contact_message.datadict["action"]}')
@@ -122,7 +149,7 @@ class Client(metaclass=ClientVerifierMeta):
             raise RuntimeError('Login cannot be empty')
         request = jim.add_contact_request(login)
         self.send_message_to_server(request)
-        response = self.receive_message_from_server()
+        response = self.__service_messages.get()
         if response.response != 200:
             raise RuntimeError(f'Add contact: expected response 200, '
                                f'received: {response.response}, error: {response.datadict["error"]}')
@@ -132,12 +159,12 @@ class Client(metaclass=ClientVerifierMeta):
             raise RuntimeError('Login cannot be empty')
         request = jim.delete_contact_request(login)
         self.send_message_to_server(request)
-        response = self.receive_message_from_server()
+        response = self.__service_messages.get()
         if response.response != 200:
             raise RuntimeError(f'Delete contact: expected response 200, '
                                f'received: {response.response}, error: {response.datadict["error"]}')
 
-    def get_current_contacts(self):
+    def get_current_contacts(self) -> list:
         contacts = self.storage.get_contacts()
         return contacts if contacts else []
 
@@ -146,7 +173,7 @@ class Client(metaclass=ClientVerifierMeta):
             raise RuntimeError('Message cannot be empty')
         request = jim.message_request(self.username, login, message)
         self.send_message_to_server(request)
-        response = self.receive_message_from_server()
+        response = self.__service_messages.get()
         if response.response != 200:
             raise RuntimeError(f'Send message: expected response 200, '
                                f'received: {response.response}, error: {response.datadict["error"]}')
@@ -157,19 +184,12 @@ class Client(metaclass=ClientVerifierMeta):
         return [{'text': item[0], 'incoming': bool(item[1])} for item in messages]
 
 
-class Menu:
-    def __init__(self, commands: list):
-        self._commands = {i + 1: item for i, item in enumerate(commands)}
-
-    def get_command(self, command_index):
-        return self._commands[command_index]
-
-    def __str__(self):
-        result = '\nChoose command:\n'
-        for key, val in self._commands.items():
-            result += f'{key}. {val}\n'
-        result += '>'
-        return result
+def check_new_incoming_messages_thread_function(message_queue: Queue):
+        while True:
+            if message_queue:
+                msg = message_queue.get()
+                formatted_message = f"New message from {msg.datadict['from']}: {msg.datadict['message']}"
+                print(formatted_message)
 
 
 if __name__ == '__main__':
@@ -180,30 +200,42 @@ if __name__ == '__main__':
         print(f'Started client with username {client.username}')
         print(f'Connecting to server {args.server_ip} on port {args.server_port}...')
         client.connect(args.server_ip, args.server_port)
-        print('Connected')
+        print('Connected, updating contacts...')
+        client.update_contacts_from_server()
+        print('Starting incoming message monitor thread...')
+        incoming_monitor = Thread(target=check_new_incoming_messages_thread_function,
+                                  args=(client.user_messages_queue,))
+        incoming_monitor.daemon = True
+        incoming_monitor.start()
 
         # console command loop
-        supported_commands = ['get_contacts', 'add_contact', 'delete_contact', 'send_message']
-        main_menu = Menu(supported_commands)
+        supported_commands = ['show_contacts', 'add_contact', 'delete_contact', 'send_message']
+        main_menu = helpers.Menu(supported_commands)
         while True:
             user_choice = None
             try:
                 user_choice = int(input(main_menu))
                 command = main_menu.get_command(user_choice)
-                if command == 'get_contacts':
+                if command == 'show_contacts':
                     client.update_contacts_from_server()
+                    print(client.get_current_contacts())
                 elif command == 'add_contact':
                     client.add_contact_on_server(input('Print login of user to add: >'))
                 elif command == 'delete_contact':
                     client.delete_contact_on_server(input('Print login of user to delete: >'))
                 elif command == 'send_message':
-                    for index, contact in enumerate(client.storage.get_contacts()):
-                        print(f'{index + 1}. {contact}')
+                    current_contacts = client.get_current_contacts()
+                    if not current_contacts:
+                        print('No contacts available')
+                        continue
+                    login = input('Print user login: >')
+                    text = input('Print text: >')
+                    client.send_message_to_contact(login, text)
             except KeyboardInterrupt:
                 exit(1)
-            except:
-                traceback.print_exc()
+            except BaseException as e:
+                print(f'Error: {str(e)}')
                 continue
-    except Exception as e:
+    except BaseException as e:
         log.critical(str(e))
         raise e

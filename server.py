@@ -6,6 +6,8 @@ import logging
 import inspect
 import os
 from time import sleep
+from threading import Thread
+from queue import Queue
 
 import helpers
 from jim import request_from_bytes, JimResponse
@@ -46,18 +48,48 @@ class ServerVerifierMeta(type):
 
 
 class Server(metaclass=ServerVerifierMeta):
-    def __init__(self, storage):
+    def __init__(self, host, port, storage,
+                 clients_limit=helpers.CLIENTS_COUNT_LIMIT, timeout=helpers.SERVER_SOCKET_TIMEOUT):
+        self.__host = host
+        self.__port = port
+        self.__storage_name = storage
+        self.__clients_limit = clients_limit
+        self.__timeout = timeout
+
+        self.__socket = None
+        self.__storage = None
+        self.__need_terminate = False
+        self.__worker_thread = None
+        self.__print_queue = Queue()
+
+    def start(self):
+        if self.__socket:
+            raise RuntimeError('Already started')
         self.__socket = socket(AF_INET, SOCK_STREAM)
-        self.__storage = DBStorageServer(storage)
+        self.__socket.bind((self.__host, self.__port))
+        self.__socket.listen(self.__clients_limit)
+        self.__socket.settimeout(self.__timeout)
+        self.__worker_thread = Thread(target=self.worker_thread_function)
+        self.__worker_thread.daemon = True
+        self.__worker_thread.start()
 
-    def set_settings(self, listen_address, listen_port,
-                     clients_limit=helpers.CLIENTS_COUNT_LIMIT, timeout=helpers.SERVER_SOCKET_TIMEOUT):
-        self.__socket.bind((listen_address, listen_port))
-        self.__socket.listen(clients_limit)
-        self.__socket.settimeout(timeout)
-
-    def __del__(self):
+    def close_server(self):
+        if not self.__socket:
+            raise RuntimeError('Not running')
         self.__socket.close()
+        self.__socket = None
+        self.__need_terminate = True
+        self.__worker_thread.join()
+        self.__worker_thread = None
+
+    def worker_thread_function(self):
+        self.__storage = DBStorageServer(self.__storage_name)
+        self.mainloop()
+        self.__storage = None
+
+    @property
+    def print_queue(self):
+        return self.__print_queue
 
     @property
     def storage(self):
@@ -67,12 +99,16 @@ class Server(metaclass=ServerVerifierMeta):
         clients = []
         logins = {}
         while True:
+            if self.__need_terminate:
+                return
+
             try:
                 conn, addr = self.__socket.accept()  # check for new connections
             except OSError:
                 pass  # timeout, do nothing
             else:
-                print(f'Client connected: {str(addr)}')
+                # print(f'Client connected: {str(addr)}')
+                self.__print_queue.put(f'Client connected: {str(addr)}')
                 clients.append(conn)
             finally:  # check for incoming requests
                 readable, writable, erroneous = [], [], []
@@ -86,6 +122,7 @@ class Server(metaclass=ServerVerifierMeta):
                         if client_socket not in writable:
                             continue
                         request = request_from_bytes(client_socket.recv(helpers.TCP_MSG_BUFFER_SIZE))
+                        self.__print_queue.put(str(request))
                         responses = []
                         if request.action == 'presence':
                             client_login = request.datadict['user']['account_name']
@@ -94,79 +131,81 @@ class Server(metaclass=ServerVerifierMeta):
                             resp = JimResponse()
                             if client_login not in logins.values():  # new client - ok
                                 logins[client_socket] = client_login
-                                server.storage.update_client(client_login, client_time, client_ip)
+                                self.storage.update_client(client_login, client_time, client_ip)
                                 resp.response = 200
                             elif client_socket in logins.keys() and \
                                     logins[client_socket] == client_login:  # existing client from same ip - ok
-                                server.storage.update_client(client_login, client_time, client_ip)
+                                self.storage.update_client(client_login, client_time, client_ip)
                                 resp.response = 200
                             else:  # existing client from different ip - not correct
                                 resp.response = 400
                                 resp.set_field('error', 'Client already online')
                             responses.append(resp)
-
-                            print(resp)  #
+                            self.__print_queue.put(str(resp))
                         elif request.action == 'add_contact':
                             client_login = logins[client_socket]
                             contact_login = request.datadict['user_id']
                             resp = JimResponse()
-                            if not server.storage.check_client_exists(contact_login):
+                            if not self.storage.check_client_exists(contact_login):
                                 resp.response = 400
                                 resp.set_field('error', f'No such client: {contact_login}')
-                            elif server.storage.check_client_in_contacts(client_login, contact_login):
+                            elif self.storage.check_client_in_contacts(client_login, contact_login):
                                 resp.response = 400
                                 resp.set_field('error', f'Client already in contacts: {contact_login}')
                             else:
-                                server.storage.add_client_to_contacts(client_login, contact_login)
+                                self.storage.add_client_to_contacts(client_login, contact_login)
                                 resp.response = 200
                             responses.append(resp)
-
-                            print(resp)  #
+                            self.__print_queue.put(str(resp))
                         elif request.action == 'del_contact':
                             client_login = logins[client_socket]
                             contact_login = request.datadict['user_id']
                             resp = JimResponse()
-                            if not server.storage.check_client_exists(contact_login):
+                            if not self.storage.check_client_exists(contact_login):
                                 resp.response = 400
                                 resp.set_field('error', f'No such client: {contact_login}')
-                            elif not server.storage.check_client_in_contacts(client_login, contact_login):
+                            elif not self.storage.check_client_in_contacts(client_login, contact_login):
                                 resp.response = 400
                                 resp.set_field('error', f'Client not in contacts: {contact_login}')
                             else:
-                                server.storage.del_client_from_contacts(client_login, contact_login)
+                                self.storage.del_client_from_contacts(client_login, contact_login)
                                 resp.response = 200
                             responses.append(resp)
-
-                            print(resp)  #
+                            self.__print_queue.put(str(resp))
                         elif request.action == 'get_contacts':
                             client_login = logins[client_socket]
-                            client_contacts = server.storage.get_client_contacts(client_login)
+                            client_contacts = self.storage.get_client_contacts(client_login)
                             quantity_resp = JimResponse()
                             quantity_resp.response = 202
                             quantity_resp.set_field('quantity', len(client_contacts))
                             responses.append(quantity_resp)
-
-                            print(quantity_resp)  #
+                            self.__print_queue.put(str(quantity_resp))
                             for contact in client_contacts:
                                 contact_resp = JimResponse()
                                 contact_resp.set_field('action', 'contact_list')
                                 contact_resp.set_field('user_id', contact)
                                 responses.append(contact_resp)
-
-                                print(contact_resp)  #
+                                self.__print_queue.put(str(contact_resp))
                         elif request.action == 'msg':
+                            target_client_login = request.datadict['to']
                             resp = JimResponse()
-                            resp.response = 200
+                            for key, val in logins.items():
+                                if val == target_client_login:
+                                    key.send(request.to_bytes())
+                                    resp.response = 200
+                                    break
+                            else:
+                                resp.response = 400
+                                resp.set_field('error', f'Client not online: {target_client_login}')
                             responses.append(resp)
-
-                            print(resp)  #
+                            self.__print_queue.put(str(resp))
                         else:
                             raise RuntimeError(f'Unknown JIM action: {request.action}')
                         for resp in responses:
                             sleep(0.001)  # this magic solves problem with multiple jim messages in one socket message!!
                             client_socket.send(resp.to_bytes())
                     except BaseException as e:
-                        print(f'Client disconnected: {client_socket.getpeername()}, {e}')
+                        self.__print_queue.put(f'Client disconnected: {client_socket.getpeername()}, {e}')
                         client_socket.close()
                         clients.remove(client_socket)
                         try:
@@ -177,14 +216,31 @@ class Server(metaclass=ServerVerifierMeta):
                             writable.remove(client_socket)
 
 
+def check_new_print_data_thread_function(print_queue: Queue):
+    while True:
+        if print_queue:
+            print(print_queue.get())
+
+
 if __name__ == '__main__':
-    print('Server started')
-    log.info('Server started')
     try:
         args = parse_commandline_args(sys.argv[1:])
-        server = Server(os.path.join(helpers.get_this_script_full_dir(), 'server.sqlite'))
-        server.set_settings(args.listen_address, args.listen_port)
-        server.mainloop()
-    except Exception as e:
+        storage_file = os.path.join(helpers.get_this_script_full_dir(), 'server.sqlite')
+        server = Server(args.listen_address, args.listen_port, storage_file)
+        print_monitor = Thread(target=check_new_print_data_thread_function,
+                               args=(server.print_queue,))
+        print_monitor.daemon = True
+        print_monitor.start()
+        supported_commands = ['start', 'stop']
+        main_menu = helpers.Menu(supported_commands)
+        while True:
+            user_choice = int(input(main_menu))
+            command = main_menu.get_command(user_choice)
+            if command == 'start':
+                server.start()
+            if command == 'stop':
+                server.close_server()
+    except BaseException as e:
+        print(f'Error: {str(e)}')
         log.critical(str(e))
         raise e
