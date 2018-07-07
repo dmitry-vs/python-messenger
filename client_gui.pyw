@@ -132,8 +132,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def disconnect_click(self):
         if not self.client:
             self.print_info('Not connected')
-        else:
-            self.print_info('Disconnecting')
+            return
+        self.print_info('Disconnecting')
         self.clear_state()
         self.clear_parameters_widgets()
         self.clear_messages_widget()

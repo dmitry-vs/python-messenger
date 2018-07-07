@@ -55,6 +55,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.monitor.gotPrintStr.connect(self.new_print_data)
         self.thread.started.connect(self.monitor.check_new_data)
 
+        # setup table widget parameters
+        header = self.ui.tableWidget_clients.horizontalHeader()
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QtWidgets.QHeaderView.Stretch)
+
     @pyqtSlot(str)
     def new_print_data(self, text: str):
         if text.startswith('Client disconnected'):
@@ -94,7 +100,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.server.close_server()
             self.server = None
             self.set_server_status_started(False)
-            self.ui.tableWidget_clients.clear()
+            self.ui.tableWidget_clients.clearContents()
         except:
             print(traceback.format_exc())
 

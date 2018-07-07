@@ -107,7 +107,6 @@ class Server(metaclass=ServerVerifierMeta):
             except OSError:
                 pass  # timeout, do nothing
             else:
-                # print(f'Client connected: {str(addr)}')
                 self.__print_queue.put(f'Client connected: {str(addr)}')
                 clients.append(conn)
             finally:  # check for incoming requests
@@ -122,7 +121,7 @@ class Server(metaclass=ServerVerifierMeta):
                         if client_socket not in writable:
                             continue
                         request = request_from_bytes(client_socket.recv(helpers.TCP_MSG_BUFFER_SIZE))
-                        self.__print_queue.put(str(request))
+                        self.__print_queue.put(f'Request:\n{request}')
                         responses = []
                         if request.action == 'presence':
                             client_login = request.datadict['user']['account_name']
@@ -141,7 +140,6 @@ class Server(metaclass=ServerVerifierMeta):
                                 resp.response = 400
                                 resp.set_field('error', 'Client already online')
                             responses.append(resp)
-                            self.__print_queue.put(str(resp))
                         elif request.action == 'add_contact':
                             client_login = logins[client_socket]
                             contact_login = request.datadict['user_id']
@@ -156,7 +154,6 @@ class Server(metaclass=ServerVerifierMeta):
                                 self.storage.add_client_to_contacts(client_login, contact_login)
                                 resp.response = 200
                             responses.append(resp)
-                            self.__print_queue.put(str(resp))
                         elif request.action == 'del_contact':
                             client_login = logins[client_socket]
                             contact_login = request.datadict['user_id']
@@ -171,7 +168,6 @@ class Server(metaclass=ServerVerifierMeta):
                                 self.storage.del_client_from_contacts(client_login, contact_login)
                                 resp.response = 200
                             responses.append(resp)
-                            self.__print_queue.put(str(resp))
                         elif request.action == 'get_contacts':
                             client_login = logins[client_socket]
                             client_contacts = self.storage.get_client_contacts(client_login)
@@ -179,13 +175,11 @@ class Server(metaclass=ServerVerifierMeta):
                             quantity_resp.response = 202
                             quantity_resp.set_field('quantity', len(client_contacts))
                             responses.append(quantity_resp)
-                            self.__print_queue.put(str(quantity_resp))
                             for contact in client_contacts:
                                 contact_resp = JimResponse()
                                 contact_resp.set_field('action', 'contact_list')
                                 contact_resp.set_field('user_id', contact)
                                 responses.append(contact_resp)
-                                self.__print_queue.put(str(contact_resp))
                         elif request.action == 'msg':
                             target_client_login = request.datadict['to']
                             resp = JimResponse()
@@ -198,10 +192,11 @@ class Server(metaclass=ServerVerifierMeta):
                                 resp.response = 400
                                 resp.set_field('error', f'Client not online: {target_client_login}')
                             responses.append(resp)
-                            self.__print_queue.put(str(resp))
                         else:
                             raise RuntimeError(f'Unknown JIM action: {request.action}')
+                        self.__print_queue.put('Response:')
                         for resp in responses:
+                            self.__print_queue.put(str(resp))
                             sleep(0.001)  # this magic solves problem with multiple jim messages in one socket message!!
                             client_socket.send(resp.to_bytes())
                     except BaseException as e:

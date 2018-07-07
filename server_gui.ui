@@ -29,12 +29,24 @@
     <widget class="QTableWidget" name="tableWidget_clients">
      <property name="geometry">
       <rect>
-       <x>40</x>
+       <x>10</x>
        <y>20</y>
-       <width>311</width>
+       <width>371</width>
        <height>161</height>
       </rect>
      </property>
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <attribute name="horizontalHeaderVisible">
+      <bool>true</bool>
+     </attribute>
+     <attribute name="verticalHeaderVisible">
+      <bool>false</bool>
+     </attribute>
      <column>
       <property name="text">
        <string>Login</string>

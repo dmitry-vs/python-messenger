@@ -228,9 +228,9 @@ if __name__ == '__main__':
                     if not current_contacts:
                         print('No contacts available')
                         continue
-                    login = input('Print user login: >')
+                    login_to = input('Print user login: >')
                     text = input('Print text: >')
-                    client.send_message_to_contact(login, text)
+                    client.send_message_to_contact(login_to, text)
             except KeyboardInterrupt:
                 exit(1)
             except BaseException as e:

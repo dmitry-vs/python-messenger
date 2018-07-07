@@ -1,6 +1,7 @@
 import os
 from functools import wraps
 import inspect
+import binascii
 
 DEFAULT_SERVER_PORT = 7777
 TCP_MSG_BUFFER_SIZE = 1024
@@ -43,3 +44,11 @@ class Menu:
             result += f'{key}. {val}\n'
         result += '>'
         return result
+
+
+def bytes_to_hexstring(data: bytes) -> str:
+    return binascii.hexlify(data).decode('utf-8')
+
+
+def hexstring_to_bytes(hexstring: str) -> bytes:
+    return binascii.unhexlify(hexstring)
