@@ -343,7 +343,7 @@
     </widget>
     <widget class="QLineEdit" name="lineEdit_password">
      <property name="enabled">
-      <bool>false</bool>
+      <bool>true</bool>
      </property>
      <property name="geometry">
       <rect>
@@ -352,6 +352,9 @@
        <width>181</width>
        <height>20</height>
       </rect>
+     </property>
+     <property name="text">
+      <string>TestPassword</string>
      </property>
      <property name="placeholderText">
       <string>Password</string>

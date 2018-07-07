@@ -12,6 +12,7 @@ APP_NAME = 'messenger'
 SERVER_LOGGER_NAME = f'{APP_NAME}.server'
 CLIENT_LOGGER_NAME = f'{APP_NAME}.client'
 DEFAULT_CLIENT_LOGIN = 'TestUser'
+DEFAULT_CLIENT_PASSWORD = 'TestPassword'
 
 
 def get_this_script_full_dir():

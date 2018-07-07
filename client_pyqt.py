@@ -92,7 +92,7 @@ class Ui_MainWindow(object):
         self.lineEdit_username.setGeometry(QtCore.QRect(10, 20, 181, 20))
         self.lineEdit_username.setObjectName("lineEdit_username")
         self.lineEdit_password = QtWidgets.QLineEdit(self.groupBox_7)
-        self.lineEdit_password.setEnabled(False)
+        self.lineEdit_password.setEnabled(True)
         self.lineEdit_password.setGeometry(QtCore.QRect(10, 50, 181, 20))
         self.lineEdit_password.setObjectName("lineEdit_password")
         self.pushButton_disconnect = QtWidgets.QPushButton(self.groupBox_7)
@@ -137,6 +137,7 @@ class Ui_MainWindow(object):
         self.pushButton_connect.setText(_translate("MainWindow", "Connect"))
         self.lineEdit_username.setText(_translate("MainWindow", "TestUser"))
         self.lineEdit_username.setPlaceholderText(_translate("MainWindow", "User name"))
+        self.lineEdit_password.setText(_translate("MainWindow", "TestPassword"))
         self.lineEdit_password.setPlaceholderText(_translate("MainWindow", "Password"))
         self.pushButton_disconnect.setText(_translate("MainWindow", "Disconnect"))
 

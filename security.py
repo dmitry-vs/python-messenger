@@ -7,7 +7,7 @@ from helpers import bytes_to_hexstring, hexstring_to_bytes
 HASH_ALGORITHM = 'sha256'
 HASH_SALT = b'\xca\xfe\xbe\xef\xca\xfe\xbe\xef\xca\xfe\xbe\xef\xca\xfe\xbe\xef\xca\xfe\xbe\xef\xca\xfe\xbe\xef'
 HASH_ITERATIONS = 100000
-AUTH_TOKEN_LEN = 32
+AUTH_TOKEN_LEN = 16
 
 
 def create_password_hash(password: str) -> str:

@@ -71,6 +71,8 @@ class MainWindow(QtWidgets.QMainWindow):
         current_clients = self.storage.get_clients()
         self.ui.tableWidget_clients.setRowCount(len(current_clients))
         for index, client in enumerate(current_clients):
+            if not client[1] or not client[2]:
+                continue
             self.ui.tableWidget_clients.setItem(index, 0, QtWidgets.QTableWidgetItem(client[0]))
             last_time = datetime.datetime.fromtimestamp(client[1]).strftime('%Y-%m-%d %H:%M:%S')
             self.ui.tableWidget_clients.setItem(index, 1, QtWidgets.QTableWidgetItem(last_time))

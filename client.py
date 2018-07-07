@@ -10,6 +10,7 @@ from queue import Queue
 import helpers
 import jim
 from storage import DBStorageClient
+import security
 import log_confing
 
 log = logging.getLogger(helpers.CLIENT_LOGGER_NAME)
@@ -17,9 +18,10 @@ log = logging.getLogger(helpers.CLIENT_LOGGER_NAME)
 
 def parse_commandline_args(cmd_args):
     parser = argparse.ArgumentParser()
-    parser.add_argument('-s', dest='server_ip', type=str, default=helpers.DEFAULT_SERVER_IP, help='server ip, default 127.0.0.1')
-    parser.add_argument('-p', dest='server_port', type=int, default=helpers.DEFAULT_SERVER_PORT, help='server port, default 7777')
+    parser.add_argument('-sa', dest='server_ip', type=str, default=helpers.DEFAULT_SERVER_IP, help='server ip, default 127.0.0.1')
+    parser.add_argument('-sp', dest='server_port', type=int, default=helpers.DEFAULT_SERVER_PORT, help='server port, default 7777')
     parser.add_argument('-u', dest='user_name', type=str, default=helpers.DEFAULT_CLIENT_LOGIN, help='client login, default "TestClient"')
+    parser.add_argument('-p', dest='user_password', type=str, default=helpers.DEFAULT_CLIENT_PASSWORD, help='client password, default "TestPassword"')
     return parser.parse_args(cmd_args)
 
 
@@ -48,8 +50,9 @@ class ClientVerifierMeta(type):
 
 
 class Client(metaclass=ClientVerifierMeta):
-    def __init__(self, username, storage_file):
+    def __init__(self, username, password, storage_file):
         self.__username = username
+        self.__security_key = security.create_password_hash(password)
         self.__socket = socket(AF_INET, SOCK_STREAM)
         self.__storage = DBStorageClient(storage_file)
         self.__service_messages = Queue()
@@ -116,8 +119,21 @@ class Client(metaclass=ClientVerifierMeta):
         request = jim.presence_request(self.__username)
         self.send_message_to_server(request)
         response = self.__service_messages.get()
-        if response.response != 200:
+        if response.response == 200:  # all ok
+            return
+        elif response.response == 401:  # authentication needed
+            self.authenticate(response.datadict['token'])
+        else:
             raise RuntimeError(f'Presence: expected 200, '
+                               f'received {response.response}, error: {response.datadict["error"]}')
+
+    def authenticate(self, auth_token: str):
+        auth_digest = security.create_auth_digest(self.__security_key, auth_token)
+        auth_message = jim.auth_client_message(self.__username, auth_digest)
+        self.send_message_to_server(auth_message)
+        response = self.__service_messages.get()
+        if response.response != 200:
+            raise RuntimeError(f'Authenticate: expected 200, '
                                f'received {response.response}, error: {response.datadict["error"]}')
 
     def connect(self, server_ip: str, server_port: int):
@@ -196,7 +212,7 @@ if __name__ == '__main__':
     try:
         args = parse_commandline_args(sys.argv[1:])
         storage_file = os.path.join(helpers.get_this_script_full_dir(), f'{args.user_name}.sqlite')
-        client = Client(username=args.user_name, storage_file=storage_file)
+        client = Client(username=args.user_name, password=args.user_password, storage_file=storage_file)
         print(f'Started client with username {client.username}')
         print(f'Connecting to server {args.server_ip} on port {args.server_port}...')
         client.connect(args.server_ip, args.server_port)
