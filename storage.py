@@ -74,6 +74,8 @@ class DBStorageServer(DBStorage):
             raise ValueError('login cannot be None or empty')
         if not password_hash:
             raise ValueError('password hash cannot be None or empty')
+        if self.check_client_exists(login) is True:
+            raise RuntimeError(f'client with this login already exists: {login}')
         self._cursor.execute('INSERT INTO `Clients` VALUES (NULL, ?, ?, NULL, NULL)', (login, password_hash))
         self._conn.commit()
 

@@ -10,6 +10,7 @@ import server_pyqt
 from server import Server
 import helpers
 from storage import DBStorageServer
+from security import create_password_hash
 import log_confing
 
 log = logging.getLogger(helpers.CLIENT_LOGGER_NAME)
@@ -47,6 +48,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # connect slots
         self.ui.pushButton_start_server.clicked.connect(self.start_server_click)
         self.ui.pushButton_stop_server.clicked.connect(self.stop_server_click)
+        self.ui.pushButton_add_new_client.clicked.connect(self.add_new_client_click)
 
         # create monitor and thread
         self.monitor = ServerMonitor(self)
@@ -60,10 +62,11 @@ class MainWindow(QtWidgets.QMainWindow):
         header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
         header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
         header.setSectionResizeMode(2, QtWidgets.QHeaderView.Stretch)
+        self.update_clients_table()
 
     @pyqtSlot(str)
     def new_print_data(self, text: str):
-        if text.startswith('Client disconnected'):
+        if text.startswith('Client disconnected') or '"action": "get_contacts"' in text:
             self.update_clients_table()
         self.print_info(text)
 
@@ -71,12 +74,26 @@ class MainWindow(QtWidgets.QMainWindow):
         current_clients = self.storage.get_clients()
         self.ui.tableWidget_clients.setRowCount(len(current_clients))
         for index, client in enumerate(current_clients):
-            if not client[1] or not client[2]:
-                continue
             self.ui.tableWidget_clients.setItem(index, 0, QtWidgets.QTableWidgetItem(client[0]))
-            last_time = datetime.datetime.fromtimestamp(client[1]).strftime('%Y-%m-%d %H:%M:%S')
+            last_time = datetime.datetime.fromtimestamp(client[1]).strftime('%Y-%m-%d %H:%M:%S') if client[1] else None
             self.ui.tableWidget_clients.setItem(index, 1, QtWidgets.QTableWidgetItem(last_time))
             self.ui.tableWidget_clients.setItem(index, 2, QtWidgets.QTableWidgetItem((client[2])))
+
+    def add_new_client_click(self):
+        try:
+            client_login = self.ui.lineEdit_add_new_client_login.text()
+            client_password = self.ui.lineEdit_add_new_client_password.text()
+            if not client_password or not client_password:
+                self.print_info('Login and password must be non-empty')
+                return
+            if self.storage.check_client_exists(client_login):
+                self.print_info(f'Client with this login already exists: {client_login}')
+                return
+            self.storage.add_client(client_login, create_password_hash(client_password))
+            self.print_info(f'Client added: {client_login}')
+            self.update_clients_table()
+        except:
+            self.print_info(traceback.format_exc())
 
     def start_server_click(self):
         try:
@@ -92,7 +109,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.set_server_status_started(True)
             self.update_clients_table()
         except:
-            print(traceback.format_exc())
+            self.print_info(traceback.format_exc())
 
     def stop_server_click(self):
         try:
@@ -103,8 +120,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.server = None
             self.set_server_status_started(False)
             self.ui.tableWidget_clients.clearContents()
+            self.ui.lineEdit_add_new_client_login.clear()
+            self.ui.lineEdit_add_new_client_password.clear()
         except:
-            print(traceback.format_exc())
+            self.print_info(traceback.format_exc())
 
     def print_info(self, info: str):
         current_text = self.ui.textBrowser_service_info.toPlainText()
