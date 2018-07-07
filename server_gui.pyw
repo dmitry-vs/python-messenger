@@ -31,6 +31,8 @@ class ServerMonitor(QObject):
         while True:
             if self._print_queue:
                 text = self._print_queue.get()
+                if text is None:
+                    return
                 self.gotPrintStr.emit(text)
 
 
@@ -52,10 +54,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # create monitor and thread
         self.monitor = ServerMonitor(self)
-        self.thread = QThread()
-        self.monitor.moveToThread(self.thread)
+        self.monitor_thread = QThread()
+        self.monitor.moveToThread(self.monitor_thread)
         self.monitor.gotPrintStr.connect(self.new_print_data)
-        self.thread.started.connect(self.monitor.check_new_data)
+        self.monitor_thread.started.connect(self.monitor.check_new_data)
 
         # setup table widget parameters
         header = self.ui.tableWidget_clients.horizontalHeader()
@@ -100,12 +102,13 @@ class MainWindow(QtWidgets.QMainWindow):
             if self.server:
                 self.print_info('Already started')
                 return
+
             self.listen_ip = self.ui.lineEdit_ip.text()
             self.listen_port = int(self.ui.lineEdit_port.text())
             self.server = Server(self.listen_ip, self.listen_port, self.storage_name)
-            self.monitor.set_queue(self.server.print_queue)
-            self.thread.start()
             self.server.start()
+            self.monitor.set_queue(self.server.print_queue)
+            self.monitor_thread.start()
             self.set_server_status_started(True)
             self.update_clients_table()
         except:
@@ -116,6 +119,8 @@ class MainWindow(QtWidgets.QMainWindow):
             if not self.server:
                 self.print_info('Not running')
                 return
+            self.server.print_queue.put(None)
+            self.monitor_thread.terminate()
             self.server.close_server()
             self.server = None
             self.set_server_status_started(False)
@@ -136,10 +141,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
 if __name__ == '__main__':
-    try:
-        app = QtWidgets.QApplication(sys.argv)
-        window = MainWindow()
-        window.show()
-        sys.exit(app.exec_())
-    except:
-        print(traceback.format_exc())
+    app = QtWidgets.QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec_())
