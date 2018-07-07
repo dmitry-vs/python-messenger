@@ -102,7 +102,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if self.server:
                 self.print_info('Already started')
                 return
-
+            self.print_info('Starting server')
             self.listen_ip = self.ui.lineEdit_ip.text()
             self.listen_port = int(self.ui.lineEdit_port.text())
             self.server = Server(self.listen_ip, self.listen_port, self.storage_name)
@@ -119,6 +119,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if not self.server:
                 self.print_info('Not running')
                 return
+            self.print_info('Stopping server')
             self.server.print_queue.put(None)
             self.monitor_thread.terminate()
             self.server.close_server()

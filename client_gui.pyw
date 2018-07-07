@@ -67,6 +67,10 @@ class MainWindow(QtWidgets.QMainWindow):
         msg = request_from_bytes(msg_bytes)
         login = msg.datadict['from']
         text = msg.datadict['message']
+        if not self.client.storage.get_contact_id(login):
+            self.client.add_contact_on_server(login)
+            self.client.update_contacts_from_server()
+            self.update_contacts_widget()
         self.client.storage.add_message(login, text, True)
         if login == self.get_current_contact():
             self.update_messages_widget(login)
