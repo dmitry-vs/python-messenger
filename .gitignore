@@ -110,3 +110,6 @@ venv.bak/
 messenger.server.log.*
 
 *.sqlite
+
+# sphinx
+_build/*
