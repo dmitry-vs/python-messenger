@@ -10,7 +10,7 @@ class JimMessage:
         self._datadict[key] = val
 
     def set_time(self):
-        self.set_field('time', str(time.time()))
+        self.set_field('time', str(int(time.time())))
 
     @property
     def datadict(self):
@@ -126,4 +126,20 @@ def message_request(login_from: str, login_to: str, text: str) -> JimRequest:
     message.set_field('from', login_from)
     message.set_field('encoding', 'utf-8')
     message.set_field('message', text)
+    return message
+
+
+def auth_server_message(auth_token: str) -> JimResponse:
+    message = JimResponse(401)
+    message.set_field('error', 'Authentication required')
+    message.set_field('token', auth_token)
+    return message
+
+
+def auth_client_message(login: str, auth_digest: str) -> JimRequest:
+    message = JimRequest()
+    message.set_field('action', 'authenticate')
+    message.set_time()
+    user_data = {'account_name': login, 'password': auth_digest}
+    message.set_field('user', user_data)
     return message

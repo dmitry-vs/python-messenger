@@ -10,8 +10,9 @@ from threading import Thread
 from queue import Queue
 
 import helpers
-from jim import request_from_bytes, JimResponse
+from jim import request_from_bytes, JimResponse, auth_server_message
 from storage import DBStorageServer
+import security
 import log_confing
 
 log = logging.getLogger(helpers.SERVER_LOGGER_NAME)
@@ -98,6 +99,8 @@ class Server(metaclass=ServerVerifierMeta):
     def mainloop(self):
         clients = []
         logins = {}
+        auth_tokens = {}
+
         while True:
             if self.__need_terminate:
                 return
@@ -107,7 +110,6 @@ class Server(metaclass=ServerVerifierMeta):
             except OSError:
                 pass  # timeout, do nothing
             else:
-                # print(f'Client connected: {str(addr)}')
                 self.__print_queue.put(f'Client connected: {str(addr)}')
                 clients.append(conn)
             finally:  # check for incoming requests
@@ -122,26 +124,46 @@ class Server(metaclass=ServerVerifierMeta):
                         if client_socket not in writable:
                             continue
                         request = request_from_bytes(client_socket.recv(helpers.TCP_MSG_BUFFER_SIZE))
-                        self.__print_queue.put(str(request))
+                        self.__print_queue.put(f'Request:\n{request}')
                         responses = []
                         if request.action == 'presence':
                             client_login = request.datadict['user']['account_name']
-                            client_time = request.datadict['time']
-                            client_ip = client_socket.getpeername()[0]
                             resp = JimResponse()
-                            if client_login not in logins.values():  # new client - ok
-                                logins[client_socket] = client_login
-                                self.storage.update_client(client_login, client_time, client_ip)
-                                resp.response = 200
+                            if not self.storage.check_client_exists(client_login):  # unknown client - error
+                                resp.response = 400
+                                resp.set_field('error', f'No such client: {client_login}')
+                            elif client_login not in logins.values():  # known client arrived - need auth
+                                token = security.create_auth_token()
+                                auth_tokens[client_socket] = token
+                                resp = auth_server_message(token)
                             elif client_socket in logins.keys() and \
-                                    logins[client_socket] == client_login:  # existing client from same ip - ok
+                                    logins[client_socket] == client_login:  # existing client from same socket - ok
+                                client_time = request.datadict['time']
+                                client_ip = client_socket.getpeername()[0]
                                 self.storage.update_client(client_login, client_time, client_ip)
                                 resp.response = 200
                             else:  # existing client from different ip - not correct
                                 resp.response = 400
                                 resp.set_field('error', 'Client already online')
                             responses.append(resp)
-                            self.__print_queue.put(str(resp))
+                        elif request.action == 'authenticate':
+                            client_login = request.datadict['user']['account_name']
+                            client_hash = self.storage.get_client_hash(client_login)
+                            auth_token = auth_tokens[client_socket]
+                            del auth_tokens[client_socket]
+                            expected_digest = security.create_auth_digest(client_hash, auth_token)
+                            client_digest = request.datadict['user']['password']
+                            resp = JimResponse()
+                            if not security.check_auth_digest_equal(expected_digest, client_digest):
+                                resp.response = 402
+                                resp.set_field('error', 'Access denied')
+                            else:  # add client login to dict, update client in database
+                                logins[client_socket] = client_login
+                                client_time = request.datadict['time']
+                                client_ip = client_socket.getpeername()[0]
+                                self.storage.update_client(client_login, client_time, client_ip)
+                                resp.response = 200
+                            responses.append(resp)
                         elif request.action == 'add_contact':
                             client_login = logins[client_socket]
                             contact_login = request.datadict['user_id']
@@ -156,7 +178,6 @@ class Server(metaclass=ServerVerifierMeta):
                                 self.storage.add_client_to_contacts(client_login, contact_login)
                                 resp.response = 200
                             responses.append(resp)
-                            self.__print_queue.put(str(resp))
                         elif request.action == 'del_contact':
                             client_login = logins[client_socket]
                             contact_login = request.datadict['user_id']
@@ -171,7 +192,6 @@ class Server(metaclass=ServerVerifierMeta):
                                 self.storage.del_client_from_contacts(client_login, contact_login)
                                 resp.response = 200
                             responses.append(resp)
-                            self.__print_queue.put(str(resp))
                         elif request.action == 'get_contacts':
                             client_login = logins[client_socket]
                             client_contacts = self.storage.get_client_contacts(client_login)
@@ -179,13 +199,11 @@ class Server(metaclass=ServerVerifierMeta):
                             quantity_resp.response = 202
                             quantity_resp.set_field('quantity', len(client_contacts))
                             responses.append(quantity_resp)
-                            self.__print_queue.put(str(quantity_resp))
                             for contact in client_contacts:
                                 contact_resp = JimResponse()
                                 contact_resp.set_field('action', 'contact_list')
                                 contact_resp.set_field('user_id', contact)
                                 responses.append(contact_resp)
-                                self.__print_queue.put(str(contact_resp))
                         elif request.action == 'msg':
                             target_client_login = request.datadict['to']
                             resp = JimResponse()
@@ -198,10 +216,11 @@ class Server(metaclass=ServerVerifierMeta):
                                 resp.response = 400
                                 resp.set_field('error', f'Client not online: {target_client_login}')
                             responses.append(resp)
-                            self.__print_queue.put(str(resp))
                         else:
                             raise RuntimeError(f'Unknown JIM action: {request.action}')
+                        self.__print_queue.put('Response:')
                         for resp in responses:
+                            self.__print_queue.put(str(resp))
                             sleep(0.001)  # this magic solves problem with multiple jim messages in one socket message!!
                             client_socket.send(resp.to_bytes())
                     except BaseException as e:

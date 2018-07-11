@@ -43,6 +43,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.label_server_port_val.setText('')
         self.client = None
         self.username = None
+        self.password = None
         self.server_ip = None
         self.server_port = None
 
@@ -66,6 +67,10 @@ class MainWindow(QtWidgets.QMainWindow):
         msg = request_from_bytes(msg_bytes)
         login = msg.datadict['from']
         text = msg.datadict['message']
+        if not self.client.storage.get_contact_id(login):
+            self.client.add_contact_on_server(login)
+            self.client.update_contacts_from_server()
+            self.update_contacts_widget()
         self.client.storage.add_message(login, text, True)
         if login == self.get_current_contact():
             self.update_messages_widget(login)
@@ -81,6 +86,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.client.close_client()
         self.client = None
         self.username = None
+        self.password = None
         self.server_ip = None
         self.server_port = None
 
@@ -96,6 +102,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # read input values
         username = self.ui.lineEdit_username.text()
+        password = self.ui.lineEdit_password.text()
         server_ip = self.ui.lineEdit_server_ip.text()
         server_port_str = self.ui.lineEdit_server_port.text()
         if not username or not server_ip or not server_port_str:
@@ -106,10 +113,11 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             server_port = int(server_port_str)
             self.username = username
+            self.password = password
             storage_file = os.path.join(helpers.get_this_script_full_dir(), f'{self.username}.sqlite')
             self.server_ip = server_ip
             self.server_port = server_port
-            self.client = Client(self.username, storage_file)
+            self.client = Client(username=self.username, password=self.password, storage_file=storage_file)
             self.print_info(f'Connecting to server {self.server_ip} on port {str(self.server_port)}...')
             self.client.connect(self.server_ip, self.server_port)
             self.print_info('Connected')
@@ -132,8 +140,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def disconnect_click(self):
         if not self.client:
             self.print_info('Not connected')
-        else:
-            self.print_info('Disconnecting')
+            return
+        self.print_info('Disconnecting')
         self.clear_state()
         self.clear_parameters_widgets()
         self.clear_messages_widget()
