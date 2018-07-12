@@ -113,3 +113,5 @@ messenger.server.log.*
 
 # sphinx
 _build/*
+
+!dist/
